@@ -17,7 +17,15 @@
       "Bash(python -m py_compile tests/test_ingest.py)",
       "Bash(pytest tests/test_ingest.py -v)",
       "Bash(python3 -:*)",
-      "Bash(pytest tests/test_ingest.py -v --tb=short)"
+      "Bash(pytest tests/test_ingest.py -v --tb=short)",
+      "Bash(git commit:*)",
+      "Bash(python -m py_compile backend/propagator.py)",
+      "Bash(mypy backend/propagator.py --ignore-missing-imports)",
+      "Bash(pytest tests/test_propagator.py -v)",
+      "Bash(python3 -c \"import sys; print\\(sys.version\\); import sgp4; print\\(''sgp4 ok''\\)\")",
+      "Bash(/Users/jebbaugh/.pyenv/versions/3.10.14/bin/pip list:*)",
+      "Bash(pip show:*)",
+      "Bash(git add:*)"
     ]
   }
 }
