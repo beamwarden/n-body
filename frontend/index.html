@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>n-body SSA Platform</title>
+
+    <!-- CesiumJS 1.114 from CDN -->
+    <link rel="stylesheet" href="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Widgets/widgets.css" />
+    <script src="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Cesium.js"></script>
+
+    <!-- D3.js v7 from CDN -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+
+    <!--
+        CESIUM ION TOKEN CONFIGURATION:
+        The Cesium Ion access token must NOT be hardcoded here.
+        It must be injected at runtime from a server-side configuration endpoint
+        or a build-time environment variable substitution step.
+        See CLAUDE.md: "CesiumJS Ion token is hardcoded in globe.js —
+        must be moved to env var before any public deployment."
+        For local demo: set CESIUM_ION_TOKEN in the environment and inject
+        via a /config endpoint on the backend.
+    -->
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { display: flex; flex-direction: column; height: 100vh; background: #0a0a0f; color: #e0e0e0; font-family: monospace; }
+        #header { padding: 8px 16px; background: #111118; border-bottom: 1px solid #222; font-size: 14px; }
+        #main-layout { display: flex; flex: 1; overflow: hidden; }
+        #cesium-container { flex: 1; height: 100%; }
+        #side-panel { width: 380px; display: flex; flex-direction: column; border-left: 1px solid #222; }
+        #residual-chart { flex: 1; padding: 8px; border-bottom: 1px solid #222; overflow: hidden; }
+        #alert-panel { height: 240px; padding: 8px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+    <div id="header">n-body SSA Platform — Continuous Monitoring &amp; Prediction</div>
+    <div id="main-layout">
+        <div id="cesium-container"></div>
+        <div id="side-panel">
+            <div id="residual-chart"></div>
+            <div id="alert-panel"></div>
+        </div>
+    </div>
+
+    <!-- Application JS modules (ES2022, loaded as modules) -->
+    <script type="module" src="src/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "n-body-frontend",
+  "version": "0.1.0",
+  "description": "Browser frontend for the n-body SSA platform. All runtime dependencies loaded from CDN.",
+  "private": true,
+  "scripts": {
+    "serve": "python3 -m http.server 3000",
+    "lint": "npx eslint src/"
+  },
+  "devDependencies": {
+    "eslint": "^8.56.0"
+  },
+  "type": "module"
+}

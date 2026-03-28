@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m py_compile /Users/jebbaugh/git/n-body/backend/ingest.py)",
+      "Bash(python -m py_compile /Users/jebbaugh/git/n-body/backend/propagator.py)",
+      "Bash(python -m py_compile /Users/jebbaugh/git/n-body/backend/kalman.py)",
+      "Bash(python -m py_compile /Users/jebbaugh/git/n-body/backend/anomaly.py)",
+      "Bash(python -m py_compile /Users/jebbaugh/git/n-body/backend/main.py)",
+      "Bash(python -m py_compile /Users/jebbaugh/git/n-body/scripts/replay.py)",
+      "Bash(python -m py_compile /Users/jebbaugh/git/n-body/scripts/seed_maneuver.py)",
+      "Bash(python -m py_compile backend/ingest.py backend/propagator.py backend/kalman.py backend/anomaly.py backend/main.py)",
+      "Bash(python -m py_compile tests/test_propagator.py tests/test_kalman.py tests/test_anomaly.py tests/test_ingest.py tests/test_main.py)",
+      "Bash(pip install:*)",
+      "Bash(pytest tests/ -v)",
+      "Bash(python -m py_compile backend/ingest.py)",
+      "Bash(mypy backend/ingest.py --ignore-missing-imports)",
+      "Bash(python -m py_compile tests/test_ingest.py)",
+      "Bash(pytest tests/test_ingest.py -v)",
+      "Bash(python3 -:*)",
+      "Bash(pytest tests/test_ingest.py -v --tb=short)"
+    ]
+  }
+}
