@@ -33,6 +33,9 @@ import sqlite3
 from typing import Optional
 
 import numpy as np
+from dotenv import load_dotenv
+
+load_dotenv()  # load .env from repo root (no-op if file absent or vars already set)
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware

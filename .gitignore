@@ -1,0 +1,26 @@
+# Environment — never commit credentials
+.env
+.env.local
+.env.*.local
+# .env.example is intentionally committed as a template
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.mypy_cache/
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# SQLite runtime files
+*.db-shm
+*.db-wal
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
