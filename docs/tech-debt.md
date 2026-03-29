@@ -374,6 +374,38 @@ the requirement or architecture section they relate to.
 
 ---
 
+### TD-027: Replace spherical miss-distance with RSW pizza-box screening
+- **Priority:** P2
+- **Source:** `backend/conjunction.py` (POC implementation); plan docs/plans/2026-03-29-conjunction-risk.md
+- **Relates to:** F-030 (anomaly triggers conjunction screening), POST-004 (full Pc-based conjunction assessment)
+- **Description:** The POC uses a simple Euclidean distance threshold (5 km / 10 km spherical)
+  for conjunction screening. The standard DoD/NASA approach uses an asymmetric screening volume
+  in the RSW (Radial-Along-Cross) frame: typically 1 km radial x 25 km along-track x 25 km
+  cross-track. This accounts for the elongated uncertainty distribution along the orbit track
+  and produces far fewer false positives for objects in similar orbital planes.
+- **Resolution path:** Compute the RSW frame from the relative velocity vector at TCA.
+  Transform the miss vector into RSW components. Apply asymmetric thresholds (r_km <= 1.0,
+  s_km <= 25.0, w_km <= 25.0) instead of the spherical 5 km threshold. See Vallado
+  (Fundamentals of Astrodynamics) Chapter 9 for the RSW frame definition.
+- **Status:** Open
+
+### TD-028: Extend conjunction screening to debris cloud scenarios
+- **Priority:** P3
+- **Source:** plan docs/plans/2026-03-29-conjunction-risk.md; architecture POST-005
+- **Relates to:** F-030 (conjunction screening), POST-005 (debris cloud evolution)
+- **Description:** Current screening considers only existing catalog objects with initialized
+  filters. A breakup event generates a debris cloud that is not yet in the catalog. The
+  screening is blind to uncatalogued fragments for the first hours after a fragmentation
+  event — precisely when conjunction risk is highest.
+- **Resolution path:** Integrate with the fragmentation model from POST-005. When a breakup
+  event is detected, generate an ensemble of modeled debris particles using a statistical
+  fragmentation model (NASA SBM or similar). Screen the ensemble against all catalog objects.
+  Probability of collision (Pc) should replace the deterministic miss-distance threshold for
+  this application.
+- **Status:** Open
+
+---
+
 ### TD-025: Track endpoint step_s is not user-configurable via UI (post-POC)
 - **Priority:** P3
 - **Source:** `docs/plans/2026-03-29-history-tracks-cones.md` Decision 1

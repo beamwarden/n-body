@@ -288,6 +288,127 @@ export function clearResolved(panelState) {
 }
 
 // ---------------------------------------------------------------------------
+// Step 9 (conjunction plan): updateAlertConjunctions
+// ---------------------------------------------------------------------------
+
+/**
+ * Append or replace the conjunction risk section on an active alert card.
+ *
+ * Finds the active (non-resolved) alert card for noradId in panelState.alerts.
+ * If found, creates a .conjunction-section and appends it (or replaces an
+ * existing one) to the alert card element, following the in-place append
+ * pattern used by _appendAnomalyHistorySection in main.js.
+ *
+ * If the alert card is scrolled out of view in the panel, applies the
+ * .conjunction-pulse CSS animation for 1 second to draw attention.
+ *
+ * @param {Object} panelState - Panel state from initAlertPanel.
+ * @param {number} noradId - NORAD catalog ID.
+ * @param {Object} conjunctionMessage - conjunction_risk message from backend.
+ * @returns {void}
+ */
+export function updateAlertConjunctions(panelState, noradId, conjunctionMessage) {
+    if (!panelState) return;
+
+    // Find the most recent active (non-resolved) alert card for this noradId.
+    let targetEntry = null;
+    for (const [, entry] of panelState.alerts) {
+        if (
+            parseInt(entry.data.norad_id, 10) === noradId &&
+            entry.status !== 'resolved'
+        ) {
+            targetEntry = entry;
+        }
+    }
+
+    if (!targetEntry) return;
+
+    const alertEl = targetEntry.el;
+
+    // Remove existing conjunction section if present (handles re-screening).
+    const existing = alertEl.querySelector('.conjunction-section');
+    if (existing) {
+        alertEl.removeChild(existing);
+    }
+
+    const section = document.createElement('div');
+    section.className = 'conjunction-section';
+
+    const header = document.createElement('div');
+    header.className = 'conjunction-header';
+    header.textContent = 'Conjunction Risk';
+    section.appendChild(header);
+
+    const firstOrder = conjunctionMessage.first_order || [];
+    const secondOrder = conjunctionMessage.second_order || [];
+
+    if (firstOrder.length === 0 && secondOrder.length === 0) {
+        const noRisk = document.createElement('div');
+        noRisk.className = 'conjunction-entry';
+        noRisk.style.color = '#666';
+        noRisk.textContent = 'No conjunctions within 5 km / 10 km in next 90 min';
+        section.appendChild(noRisk);
+    } else {
+        // First-order entries.
+        for (const entry of firstOrder) {
+            const row = document.createElement('div');
+            row.className = 'conjunction-entry first-order';
+            const tca = _formatTca(entry.time_of_closest_approach_utc);
+            row.innerHTML =
+                `<span class="conjunction-norad">${_escapeHtml(String(entry.norad_id))}</span>` +
+                ` <span class="conjunction-name">${_escapeHtml(entry.name || '')}</span>` +
+                ` <span class="conjunction-dist">${Number(entry.min_distance_km).toFixed(1)} km</span>` +
+                ` <span class="conjunction-tca">${_escapeHtml(tca)}</span>`;
+            section.appendChild(row);
+        }
+        // Second-order entries.
+        for (const entry of secondOrder) {
+            const row = document.createElement('div');
+            row.className = 'conjunction-entry second-order';
+            const tca = _formatTca(entry.time_of_closest_approach_utc);
+            const viaName = conjunctionMessage.first_order
+                ? (conjunctionMessage.first_order.find((f) => f.norad_id === entry.via_norad_id) || {}).name || String(entry.via_norad_id)
+                : String(entry.via_norad_id);
+            row.innerHTML =
+                `<span class="conjunction-norad">${_escapeHtml(String(entry.norad_id))}</span>` +
+                ` <span class="conjunction-name">${_escapeHtml(entry.name || '')}</span>` +
+                ` <span class="conjunction-dist">${Number(entry.min_distance_km).toFixed(1)} km</span>` +
+                ` <span class="conjunction-tca">${_escapeHtml(tca)}</span>` +
+                ` <span class="conjunction-via">via ${_escapeHtml(viaName)}</span>`;
+            section.appendChild(row);
+        }
+    }
+
+    alertEl.appendChild(section);
+
+    // Pulse the card border if it is scrolled out of the panel's visible area.
+    if (panelState.listEl) {
+        const listRect = panelState.listEl.getBoundingClientRect();
+        const cardRect = alertEl.getBoundingClientRect();
+        const isOutOfView = cardRect.bottom < listRect.top || cardRect.top > listRect.bottom;
+        if (isOutOfView) {
+            alertEl.classList.add('conjunction-pulse');
+            setTimeout(() => alertEl.classList.remove('conjunction-pulse'), 1200);
+        }
+    }
+}
+
+/**
+ * Format a TCA ISO-8601 UTC string as HH:MM:SS UTC.
+ * @param {string} tcaStr - ISO-8601 UTC string.
+ * @returns {string} Formatted time string.
+ */
+function _formatTca(tcaStr) {
+    if (!tcaStr) return '';
+    try {
+        const d = new Date(tcaStr);
+        return d.toISOString().substring(11, 19) + ' UTC';
+    } catch (_) {
+        return tcaStr;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 

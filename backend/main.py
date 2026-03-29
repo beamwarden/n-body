@@ -41,6 +41,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 import backend.anomaly as anomaly
+import backend.conjunction as conjunction
 import backend.ingest as ingest
 import backend.kalman as kalman
 import backend.propagator as propagator
@@ -75,6 +76,122 @@ _WS_TYPE_RECALIBRATION: str = WS_TYPE_RECALIBRATION
 # module-level names so any existing call sites in this file and in tests that
 # import these names from main continue to resolve correctly.
 # TECH DEBT TD-013: state_history table retained for post-POC history endpoint.
+
+
+def _ensure_conjunction_tables(db: sqlite3.Connection) -> None:
+    """Create conjunction_events and conjunction_risks tables if they do not exist.
+
+    Called during lifespan startup after _ensure_state_history_table.
+
+    Args:
+        db: Open SQLite connection.
+    """
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS conjunction_events (
+            id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+            anomalous_norad_id    INTEGER NOT NULL,
+            screening_epoch_utc   TEXT    NOT NULL,
+            horizon_s             INTEGER NOT NULL,
+            threshold_km          REAL    NOT NULL,
+            created_at            TEXT    NOT NULL DEFAULT (datetime('now'))
+        )
+        """
+    )
+    db.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_conjunction_events_norad
+        ON conjunction_events (anomalous_norad_id)
+        """
+    )
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS conjunction_risks (
+            id                              INTEGER PRIMARY KEY AUTOINCREMENT,
+            conjunction_event_id            INTEGER NOT NULL,
+            risk_order                      INTEGER NOT NULL,
+            norad_id                        INTEGER NOT NULL,
+            min_distance_km                 REAL    NOT NULL,
+            time_of_closest_approach_utc    TEXT    NOT NULL,
+            via_norad_id                    INTEGER,
+            FOREIGN KEY (conjunction_event_id) REFERENCES conjunction_events(id)
+        )
+        """
+    )
+    db.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_conjunction_risks_event
+        ON conjunction_risks (conjunction_event_id)
+        """
+    )
+    db.commit()
+
+
+def _persist_conjunction_result(
+    db: sqlite3.Connection, result: dict
+) -> int:
+    """Insert a conjunction screening result into the SQLite persistence tables.
+
+    Inserts one row into conjunction_events and one row per risk entry into
+    conjunction_risks. Returns the conjunction_event_id for the inserted event row.
+
+    Args:
+        db: Open SQLite connection.
+        result: Conjunction result dict as returned by conjunction.screen_conjunctions.
+
+    Returns:
+        Integer conjunction_event_id of the inserted conjunction_events row.
+    """
+    cursor = db.execute(
+        """
+        INSERT INTO conjunction_events
+            (anomalous_norad_id, screening_epoch_utc, horizon_s, threshold_km)
+        VALUES (?, ?, ?, ?)
+        """,
+        (
+            result["anomalous_norad_id"],
+            result["screening_epoch_utc"],
+            result["horizon_s"],
+            result["threshold_km"],
+        ),
+    )
+    event_id: int = cursor.lastrowid  # type: ignore[assignment]
+
+    for entry in result.get("first_order", []):
+        db.execute(
+            """
+            INSERT INTO conjunction_risks
+                (conjunction_event_id, risk_order, norad_id,
+                 min_distance_km, time_of_closest_approach_utc, via_norad_id)
+            VALUES (?, 1, ?, ?, ?, NULL)
+            """,
+            (
+                event_id,
+                entry["norad_id"],
+                entry["min_distance_km"],
+                entry["time_of_closest_approach_utc"],
+            ),
+        )
+
+    for entry in result.get("second_order", []):
+        db.execute(
+            """
+            INSERT INTO conjunction_risks
+                (conjunction_event_id, risk_order, norad_id,
+                 min_distance_km, time_of_closest_approach_utc, via_norad_id)
+            VALUES (?, 2, ?, ?, ?, ?)
+            """,
+            (
+                event_id,
+                entry["norad_id"],
+                entry["min_distance_km"],
+                entry["time_of_closest_approach_utc"],
+                entry.get("via_norad_id"),
+            ),
+        )
+
+    db.commit()
+    return event_id
 
 
 # ---------------------------------------------------------------------------
@@ -159,6 +276,106 @@ ws_manager = ConnectionManager()
 # ---------------------------------------------------------------------------
 # Phase 4: Background tasks
 # ---------------------------------------------------------------------------
+
+
+async def _run_conjunction_screening(
+    app: FastAPI, screening_inputs: dict
+) -> None:
+    """Async fire-and-forget task that runs conjunction screening off the event loop.
+
+    Builds the other_objects list and catalog_name_map from current app state,
+    calls conjunction.screen_conjunctions via run_in_executor (CPU-bound),
+    persists the result to SQLite, and broadcasts the conjunction_risk WS message.
+
+    The screening_inputs dict must contain:
+        anomalous_norad_id (int): NORAD ID of the anomalous object.
+        screening_epoch_utc (str): ISO-8601 UTC epoch string from the anomaly message.
+        tle_line1 (str): TLE line 1 for the anomalous object.
+        tle_line2 (str): TLE line 2 for the anomalous object.
+
+    Errors are logged but do not crash this background task.
+
+    Args:
+        app: FastAPI application instance (for app.state access).
+        screening_inputs: Dict with keys anomalous_norad_id, screening_epoch_utc,
+            tle_line1, tle_line2.
+    """
+    try:
+        anomalous_norad_id: int = int(screening_inputs["anomalous_norad_id"])
+        screening_epoch_str: str = screening_inputs["screening_epoch_utc"]
+        tle_line1: str = screening_inputs["tle_line1"]
+        tle_line2: str = screening_inputs["tle_line2"]
+
+        # Parse epoch string to UTC-aware datetime.
+        screening_epoch_utc: datetime.datetime = datetime.datetime.strptime(
+            screening_epoch_str, "%Y-%m-%dT%H:%M:%SZ"
+        ).replace(tzinfo=datetime.timezone.utc)
+
+        # Build other_objects list from filter_states: include every non-anomalous
+        # object that has last_tle_line1 and last_tle_line2 set.
+        filter_states: dict[int, dict] = app.state.filter_states
+        other_objects: list[dict] = []
+        for norad_id, fs in list(filter_states.items()):
+            if norad_id == anomalous_norad_id:
+                continue
+            line1 = fs.get("last_tle_line1")
+            line2 = fs.get("last_tle_line2")
+            if line1 and line2:
+                other_objects.append(
+                    {
+                        "norad_id": norad_id,
+                        "tle_line1": line1,
+                        "tle_line2": line2,
+                    }
+                )
+
+        # Build catalog_name_map from catalog_entries.
+        catalog_name_map: dict[int, str] = {
+            int(e["norad_id"]): e.get("name", str(e["norad_id"]))
+            for e in app.state.catalog_entries
+        }
+
+        logger.info(
+            "_run_conjunction_screening: NORAD %d epoch=%s other_objects=%d",
+            anomalous_norad_id,
+            screening_epoch_str,
+            len(other_objects),
+        )
+
+        # Run CPU-bound screening in thread pool to avoid blocking the event loop.
+        loop = asyncio.get_event_loop()
+        result: dict = await loop.run_in_executor(
+            None,
+            conjunction.screen_conjunctions,
+            anomalous_norad_id,
+            tle_line1,
+            tle_line2,
+            screening_epoch_utc,
+            other_objects,
+            catalog_name_map,
+        )
+
+        # Persist result to SQLite.
+        _persist_conjunction_result(app.state.db, result)
+
+        # Broadcast conjunction_risk message to all connected WebSocket clients.
+        await ws_manager.broadcast(result)
+
+        logger.info(
+            "_run_conjunction_screening: complete for NORAD %d — "
+            "first_order=%d second_order=%d",
+            anomalous_norad_id,
+            len(result.get("first_order", [])),
+            len(result.get("second_order", [])),
+        )
+
+    except Exception as exc:  # noqa: BLE001
+        logger.error(
+            "_run_conjunction_screening: error for NORAD %s: %s",
+            screening_inputs.get("anomalous_norad_id"),
+            exc,
+            exc_info=True,
+        )
 
 
 async def _ingest_loop_task(app: FastAPI) -> None:
@@ -304,6 +521,23 @@ def _process_single_object(
         # Schedule broadcast as a fire-and-forget coroutine from sync context.
         asyncio.get_event_loop().create_task(ws_manager.broadcast(msg))
 
+    # Phase 2 (plan step 2): if an anomaly was detected, schedule conjunction screening.
+    # Detect anomaly by checking the returned message list (no changes to processing.py).
+    # tle_record is already in scope from line 290 above.
+    anomaly_message: Optional[dict] = next(
+        (m for m in messages if m.get("type") == WS_TYPE_ANOMALY), None
+    )
+    if anomaly_message is not None:
+        screening_inputs: dict = {
+            "anomalous_norad_id": norad_id,
+            "screening_epoch_utc": anomaly_message["epoch_utc"],
+            "tle_line1": tle_record["tle_line1"],
+            "tle_line2": tle_record["tle_line2"],
+        }
+        asyncio.get_event_loop().create_task(
+            _run_conjunction_screening(app, screening_inputs)
+        )
+
 
 # ---------------------------------------------------------------------------
 # Phase 3: Lifespan (startup and shutdown)
@@ -330,6 +564,9 @@ async def lifespan(app: FastAPI):
 
     _ensure_state_history_table(db)
     logger.info("state_history table ready.")
+
+    _ensure_conjunction_tables(db)
+    logger.info("conjunction tables ready.")
 
     try:
         anomaly.ensure_alerts_table(db)
@@ -654,6 +891,110 @@ async def get_object_anomalies(norad_id: int) -> list[dict]:
     return result
 
 
+@app.get("/object/{norad_id}/conjunctions")
+async def get_object_conjunctions(norad_id: int) -> list[dict]:
+    """Return the last 5 conjunction screening results for a given NORAD ID.
+
+    Queries conjunction_events joined with conjunction_risks, ordered by
+    created_at DESC, limited to 5 events. Reconstructs each event as a dict
+    matching the conjunction_risk WebSocket message schema.
+
+    Args:
+        norad_id: NORAD catalog ID (anomalous object).
+
+    Returns:
+        List of up to 5 conjunction result dicts (newest first).
+
+    Raises:
+        HTTPException 404 if norad_id is not in the catalog.
+    """
+    catalog_ids = {int(e["norad_id"]) for e in app.state.catalog_entries}
+    if norad_id not in catalog_ids:
+        raise HTTPException(
+            status_code=404,
+            detail=f"NORAD ID {norad_id} not found in catalog.",
+        )
+
+    db: sqlite3.Connection = app.state.db
+
+    # Fetch the 5 most recent conjunction events for this norad_id.
+    event_cursor = db.execute(
+        """
+        SELECT id, anomalous_norad_id, screening_epoch_utc, horizon_s, threshold_km
+        FROM conjunction_events
+        WHERE anomalous_norad_id = ?
+        ORDER BY created_at DESC, id DESC
+        LIMIT 5
+        """,
+        (norad_id,),
+    )
+    events = event_cursor.fetchall()
+
+    # Build name map from catalog entries for risk entry name lookup.
+    catalog_name_map: dict[int, str] = {
+        int(e["norad_id"]): e.get("name", str(e["norad_id"]))
+        for e in app.state.catalog_entries
+    }
+
+    results: list[dict] = []
+    for event_row in events:
+        event_id, anomalous_norad_id, screening_epoch_utc, horizon_s, threshold_km = (
+            event_row
+        )
+
+        # Fetch associated risk rows.
+        risk_cursor = db.execute(
+            """
+            SELECT risk_order, norad_id, min_distance_km,
+                   time_of_closest_approach_utc, via_norad_id
+            FROM conjunction_risks
+            WHERE conjunction_event_id = ?
+            ORDER BY risk_order ASC, min_distance_km ASC
+            """,
+            (event_id,),
+        )
+        risk_rows = risk_cursor.fetchall()
+
+        first_order: list[dict] = []
+        second_order: list[dict] = []
+        for risk_row in risk_rows:
+            risk_order, risk_norad_id, min_distance_km, tca_utc, via_norad_id = risk_row
+            name = catalog_name_map.get(risk_norad_id, str(risk_norad_id))
+            if risk_order == 1:
+                first_order.append(
+                    {
+                        "norad_id": risk_norad_id,
+                        "name": name,
+                        "min_distance_km": float(min_distance_km),
+                        "time_of_closest_approach_utc": tca_utc,
+                    }
+                )
+            else:
+                second_order.append(
+                    {
+                        "norad_id": risk_norad_id,
+                        "name": name,
+                        "min_distance_km": float(min_distance_km),
+                        "via_norad_id": via_norad_id,
+                        "time_of_closest_approach_utc": tca_utc,
+                    }
+                )
+
+        results.append(
+            {
+                "type": "conjunction_risk",
+                "anomalous_norad_id": anomalous_norad_id,
+                "screening_epoch_utc": screening_epoch_utc,
+                "horizon_s": horizon_s,
+                "threshold_km": float(threshold_km),
+                "first_order": first_order,
+                "second_order": second_order,
+            }
+        )
+
+    return results
+
+
 @app.get("/object/{norad_id}/track")
 async def get_object_track(
     norad_id: int,
@@ -874,6 +1215,24 @@ async def admin_trigger_process() -> dict:
 
             if messages:
                 last_broadcast_norad.add(norad_id)
+
+            # Phase 2 (plan step 3): schedule conjunction screening if an anomaly
+            # was detected. Only trigger on the last TLE for each object to avoid
+            # redundant screenings from intermediate replay TLEs.
+            if is_last:
+                admin_anomaly_msg: Optional[dict] = next(
+                    (m for m in messages if m.get("type") == WS_TYPE_ANOMALY), None
+                )
+                if admin_anomaly_msg is not None:
+                    admin_screening_inputs: dict = {
+                        "anomalous_norad_id": norad_id,
+                        "screening_epoch_utc": admin_anomaly_msg["epoch_utc"],
+                        "tle_line1": tle_record["tle_line1"],
+                        "tle_line2": tle_record["tle_line2"],
+                    }
+                    asyncio.get_event_loop().create_task(
+                        _run_conjunction_screening(app, admin_screening_inputs)
+                    )
 
         except Exception as exc:  # noqa: BLE001
             logger.error(

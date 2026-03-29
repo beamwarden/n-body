@@ -5,9 +5,9 @@
  * alerts modules.
  */
 
-import { initGlobe, updateSatellitePosition, updateUncertaintyEllipsoid, highlightAnomaly, setupSelectionHandler, drawHistoricalTrack, drawPredictiveTrackWithCone, clearTrackAndCone } from './globe.js';
+import { initGlobe, updateSatellitePosition, updateUncertaintyEllipsoid, highlightAnomaly, setupSelectionHandler, drawHistoricalTrack, drawPredictiveTrackWithCone, clearTrackAndCone, applyConjunctionRisk, clearConjunctionRisk, getConjunctionRiskMap, getLastConjunctionMessage } from './globe.js';
 import { initResidualChart, appendResidualDataPoint, selectObject, addAnomalyMarker } from './residuals.js';
-import { initAlertPanel, addAlert, updateAlertStatus, seedFromCatalog as alertSeedFromCatalog } from './alerts.js';
+import { initAlertPanel, addAlert, updateAlertStatus, updateAlertConjunctions, seedFromCatalog as alertSeedFromCatalog } from './alerts.js';
 
 // ---------------------------------------------------------------------------
 // Module-level state (step 7)
@@ -114,6 +114,20 @@ export function routeMessage(message) {
             _resolveRecalibratingAlerts(norad_id, message.epoch_utc);
         }
 
+        // Conjunction auto-clear (plan step 10): on ANY state_update for the
+        // anomalous object, clear conjunction risk highlighting and show a toast.
+        // The trigger is the next processing cycle for that object regardless of
+        // anomaly status.
+        const lastConjMsg = getLastConjunctionMessage();
+        if (lastConjMsg && lastConjMsg.anomalous_norad_id === norad_id) {
+            const allFlaggedIds = Array.from(getConjunctionRiskMap().keys());
+            // Include the anomalous object itself in the clear set so its color
+            // is restored if it was inadvertently in the risk map.
+            if (!allFlaggedIds.includes(norad_id)) allFlaggedIds.push(norad_id);
+            clearConjunctionRisk(viewer, allFlaggedIds);
+            _showConjunctionClearedToast(norad_id, message.epoch_utc);
+        }
+
     } else if (type === 'anomaly') {
         highlightAnomaly(viewer, norad_id, message.anomaly_type);
         if (panelState) {
@@ -150,6 +164,21 @@ export function routeMessage(message) {
             updateAlertStatus(panelState, norad_id, 'recalibrating', null);
         }
         latestStateMap.set(norad_id, message);
+
+    } else if (type === 'conjunction_risk') {
+        // Conjunction risk (plan step 10): apply globe highlighting and enrich alert card.
+        applyConjunctionRisk(viewer, message);
+        if (panelState) {
+            updateAlertConjunctions(panelState, message.anomalous_norad_id, message);
+        }
+        // Refresh info panel if the selected object is the anomalous one or is at risk.
+        const isRelevant =
+            selectedNoradId === message.anomalous_norad_id ||
+            (message.first_order || []).some((e) => e.norad_id === selectedNoradId) ||
+            (message.second_order || []).some((e) => e.norad_id === selectedNoradId);
+        if (isRelevant) {
+            _showObjectInfoPanel(selectedNoradId);
+        }
     }
 }
 
@@ -449,6 +478,44 @@ function _showObjectInfoPanel(noradId) {
     _appendAnomalyHistorySection(panelEl, noradId).catch((err) => {
         console.warn('[main] _appendAnomalyHistorySection error:', err);
     });
+}
+
+/**
+ * Show a dismissible toast notification at the top of the side panel to inform
+ * the operator that conjunction risk has been cleared for an object.
+ *
+ * The toast is inserted at the top of #side-panel and auto-dismisses after 8
+ * seconds with a CSS fade-out transition. Uses the nameMap for the object name.
+ *
+ * @param {number} noradId - NORAD catalog ID of the object whose risk was cleared.
+ * @param {string} epochUtc - ISO-8601 UTC epoch from the clearing state_update.
+ * @returns {void}
+ */
+function _showConjunctionClearedToast(noradId, epochUtc) {
+    const sidePanelEl = document.getElementById('side-panel');
+    if (!sidePanelEl) return;
+
+    const objName = nameMap.get(noradId) || String(noradId);
+    const timeStr = epochUtc
+        ? String(epochUtc).replace('T', ' ').substring(0, 19) + ' UTC'
+        : '';
+
+    const toastEl = document.createElement('div');
+    toastEl.className = 'conjunction-toast';
+    toastEl.textContent =
+        'Conjunction risk cleared \u2014 ' + objName + (timeStr ? '  ' + timeStr : '');
+
+    sidePanelEl.insertBefore(toastEl, sidePanelEl.firstChild);
+
+    // Auto-dismiss after 8 seconds with CSS fade-out.
+    setTimeout(() => {
+        toastEl.style.opacity = '0';
+        setTimeout(() => {
+            if (toastEl.parentNode) {
+                toastEl.parentNode.removeChild(toastEl);
+            }
+        }, 600); // allow transition to complete
+    }, 8000);
 }
 
 /**

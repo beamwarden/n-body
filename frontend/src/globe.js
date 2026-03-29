@@ -33,6 +33,24 @@ const entityMap = new Map();
 const ellipsoidMap = new Map();
 
 // ---------------------------------------------------------------------------
+// Conjunction risk state (plan 2026-03-29-conjunction-risk.md step 8)
+// ---------------------------------------------------------------------------
+
+/**
+ * Maps NORAD ID to conjunction risk order string for active conjunction risks.
+ * 'first_order' | 'second_order'
+ * @type {Map<number, string>}
+ */
+const conjunctionRiskMap = new Map();
+
+/**
+ * Most recent conjunction_risk message received. Stored so main.js can extract
+ * the object name and epoch for the auto-clear toast notification.
+ * @type {Object|null}
+ */
+let lastConjunctionMessage = null;
+
+// ---------------------------------------------------------------------------
 // Step 8: ECI-to-ECEF conversion helper
 // ---------------------------------------------------------------------------
 
@@ -159,19 +177,33 @@ export function initGlobe(containerId, ionToken) {
 export function updateSatellitePosition(viewer, stateUpdate) {
     const { norad_id, eci_km, epoch_utc, confidence } = stateUpdate;
     const cartesian3 = eciToEcefCartesian3(eci_km, epoch_utc);
-    const color = confidenceColor(confidence);
+    // Compute confidence-based color as the base color.
+    const baseColor = confidenceColor(confidence);
+
+    // Apply conjunction risk color override if this object is flagged.
+    // First-order: RED; second-order: YELLOW. Override persists across state_update
+    // messages until clearConjunctionRisk() is called by main.js auto-clear logic.
+    let effectiveColor = baseColor;
+    const riskOrder = conjunctionRiskMap.get(norad_id);
+    if (riskOrder === 'first_order') {
+        effectiveColor = Cesium.Color.RED;
+    } else if (riskOrder === 'second_order') {
+        effectiveColor = Cesium.Color.YELLOW;
+    }
 
     if (entityMap.has(norad_id)) {
         const entity = entityMap.get(norad_id);
         entity.position = new Cesium.ConstantPositionProperty(cartesian3);
-        entity.billboard.color = new Cesium.ConstantProperty(color);
+        entity.billboard.color = new Cesium.ConstantProperty(effectiveColor);
+        // Store confidence for use by clearConjunctionRisk color restoration.
+        entity.properties._lastConfidence = new Cesium.ConstantProperty(confidence);
     } else {
         const entity = viewer.entities.add({
             id: 'sat-' + norad_id,
             position: cartesian3,
             billboard: {
                 image: _createSatelliteDot(),
-                color: color,
+                color: effectiveColor,
                 scale: 0.6,
                 verticalOrigin: Cesium.VerticalOrigin.CENTER,
                 horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
@@ -189,6 +221,7 @@ export function updateSatellitePosition(viewer, stateUpdate) {
             },
             properties: {
                 norad_id: norad_id,
+                _lastConfidence: confidence,
             },
         });
         entityMap.set(norad_id, entity);
@@ -313,6 +346,98 @@ export function highlightAnomaly(viewer, noradId, anomalyType) {
             ellEntity.ellipsoid.material = Cesium.Color.CYAN.withAlpha(0.15);
         }
     }, 10000);
+}
+
+// ---------------------------------------------------------------------------
+// Conjunction risk highlighting (plan 2026-03-29-conjunction-risk.md step 8)
+// ---------------------------------------------------------------------------
+
+/**
+ * Apply conjunction risk color overrides to globe entities.
+ *
+ * Clears any previous conjunction risk state, stores the new message in
+ * lastConjunctionMessage, and sets billboard colors: RED for first-order,
+ * YELLOW for second-order. The conjunctionRiskMap is updated so that
+ * updateSatellitePosition will continue to enforce the override across
+ * subsequent state_update messages until clearConjunctionRisk is called.
+ *
+ * @param {Object} viewer - Cesium.Viewer instance.
+ * @param {Object} conjunctionMessage - conjunction_risk message from backend WebSocket.
+ * @returns {void}
+ */
+export function applyConjunctionRisk(viewer, conjunctionMessage) {
+    // Clear previous conjunction risk state before applying new one.
+    conjunctionRiskMap.clear();
+    lastConjunctionMessage = conjunctionMessage;
+
+    for (const entry of (conjunctionMessage.first_order || [])) {
+        conjunctionRiskMap.set(entry.norad_id, 'first_order');
+        const entity = entityMap.get(entry.norad_id);
+        if (entity) {
+            entity.billboard.color = new Cesium.ConstantProperty(Cesium.Color.RED);
+        }
+    }
+
+    for (const entry of (conjunctionMessage.second_order || [])) {
+        // Do not override a first-order entry with a second-order color.
+        if (!conjunctionRiskMap.has(entry.norad_id)) {
+            conjunctionRiskMap.set(entry.norad_id, 'second_order');
+            const entity = entityMap.get(entry.norad_id);
+            if (entity) {
+                entity.billboard.color = new Cesium.ConstantProperty(Cesium.Color.YELLOW);
+            }
+        }
+    }
+}
+
+/**
+ * Clear conjunction risk highlighting and restore confidence-based colors.
+ *
+ * For each NORAD ID in the provided array, removes it from conjunctionRiskMap and
+ * restores the billboard color to its confidence-based color using the confidence
+ * value stored in the entity's last known state (or 0.5 if unknown).
+ * Resets lastConjunctionMessage to null.
+ *
+ * @param {Object} viewer - Cesium.Viewer instance.
+ * @param {Array<number>} noradIds - Array of NORAD IDs to clear.
+ * @returns {void}
+ */
+export function clearConjunctionRisk(viewer, noradIds) {
+    for (const noradId of noradIds) {
+        conjunctionRiskMap.delete(noradId);
+        const entity = entityMap.get(noradId);
+        if (entity) {
+            // Restore confidence-based color. Read confidence from entity properties
+            // if stored; default to 0.5 (amber range) if not available.
+            const storedConfidence = entity.properties && entity.properties._lastConfidence
+                ? entity.properties._lastConfidence.getValue()
+                : 0.5;
+            entity.billboard.color = new Cesium.ConstantProperty(
+                confidenceColor(storedConfidence)
+            );
+        }
+    }
+    lastConjunctionMessage = null;
+}
+
+/**
+ * Return a read-only reference to the conjunction risk map.
+ * Used by main.js to determine which NORAD IDs to pass to clearConjunctionRisk.
+ *
+ * @returns {Map<number, string>} conjunctionRiskMap (live reference, do not mutate).
+ */
+export function getConjunctionRiskMap() {
+    return conjunctionRiskMap;
+}
+
+/**
+ * Return the last conjunction_risk message received, or null if none.
+ * Used by main.js to extract object name and epoch for the auto-clear toast.
+ *
+ * @returns {Object|null} lastConjunctionMessage.
+ */
+export function getLastConjunctionMessage() {
+    return lastConjunctionMessage;
 }
 
 // ---------------------------------------------------------------------------
