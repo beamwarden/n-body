@@ -1,0 +1,432 @@
+"""Shared predict-update-anomaly-recalibrate pipeline for one catalog object.
+
+This module is imported by both main.py (for the live server processing loop)
+and scripts/replay.py (for offline historical TLE replay). It contains no
+FastAPI or WebSocket types so it can be imported in non-server contexts.
+
+Coordinate frame: all state vectors are ECI J2000 km and km/s throughout.
+Units: km for position, km/s for velocity, seconds for time deltas.
+"""
+import datetime
+import logging
+import sqlite3
+from typing import Optional
+
+import numpy as np
+from numpy.typing import NDArray
+
+import backend.anomaly as anomaly
+import backend.ingest as ingest
+import backend.kalman as kalman
+import backend.propagator as propagator
+
+logger = logging.getLogger(__name__)
+
+# Valid WebSocket message types — mirrors the constants in main.py so callers
+# can interpret the returned dicts. main.py still owns the broadcast logic.
+WS_TYPE_STATE_UPDATE: str = "state_update"
+WS_TYPE_ANOMALY: str = "anomaly"
+WS_TYPE_RECALIBRATION: str = "recalibration"
+
+
+def _ensure_state_history_table(db: sqlite3.Connection) -> None:
+    """Create the state_history table and index if they do not already exist.
+
+    Identical schema to the one created by main.py._ensure_state_history_table.
+    Extracted here so replay.py can call it without importing main.py.
+
+    Args:
+        db: Open SQLite connection.
+    """
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS state_history (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            norad_id          INTEGER NOT NULL,
+            epoch_utc         TEXT    NOT NULL,
+            x_km              REAL    NOT NULL,
+            y_km              REAL    NOT NULL,
+            z_km              REAL    NOT NULL,
+            vx_km_s           REAL    NOT NULL,
+            vy_km_s           REAL    NOT NULL,
+            vz_km_s           REAL    NOT NULL,
+            cov_x_km2         REAL    NOT NULL,
+            cov_y_km2         REAL    NOT NULL,
+            cov_z_km2         REAL    NOT NULL,
+            nis               REAL    NOT NULL,
+            confidence        REAL    NOT NULL,
+            anomaly_type      TEXT,
+            message_type      TEXT    NOT NULL
+        )
+        """
+    )
+    db.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_state_history_norad_epoch
+        ON state_history (norad_id, epoch_utc)
+        """
+    )
+    db.commit()
+
+
+def _build_ws_message(
+    norad_id: int,
+    filter_state: dict,
+    message_type: str,
+    anomaly_type: Optional[str] = None,
+) -> dict:
+    """Construct a WebSocket message conforming to architecture Section 3.5 schema.
+
+    Numpy arrays are converted to plain Python lists for JSON serialization.
+    The epoch_utc field always ends with the Z suffix (UTC).
+
+    Args:
+        norad_id: NORAD catalog ID.
+        filter_state: Filter state dict from kalman.init_filter / kalman.update.
+        message_type: One of WS_TYPE_STATE_UPDATE, WS_TYPE_ANOMALY, WS_TYPE_RECALIBRATION.
+        anomaly_type: One of the ANOMALY_* constants from anomaly.py, or None.
+
+    Returns:
+        Dict matching the F-043 schema.
+    """
+    state = kalman.get_state(filter_state)
+
+    epoch_dt: datetime.datetime = state["last_epoch_utc"]
+    if epoch_dt.tzinfo is None:
+        raise ValueError("filter_state last_epoch_utc must be UTC-aware")
+    epoch_str: str = epoch_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    state_eci_km: NDArray[np.float64] = state["state_eci_km"]
+    cov_km2: NDArray[np.float64] = state["covariance_km2"]
+
+    eci_km_list: list = state_eci_km[:3].tolist()
+    eci_km_s_list: list = state_eci_km[3:].tolist()
+    cov_diag_list: list = [
+        float(cov_km2[0, 0]),
+        float(cov_km2[1, 1]),
+        float(cov_km2[2, 2]),
+    ]
+
+    return {
+        "type": message_type,
+        "norad_id": norad_id,
+        "epoch_utc": epoch_str,
+        "eci_km": eci_km_list,
+        "eci_km_s": eci_km_s_list,
+        "covariance_diagonal_km2": cov_diag_list,
+        "nis": float(state["nis"]),
+        "innovation_eci_km": state.get(
+            "innovation_eci_km", np.zeros(6, dtype=np.float64)
+        ).tolist(),
+        "confidence": float(state["confidence"]),
+        "anomaly_type": anomaly_type,
+    }
+
+
+def _insert_state_history_row(
+    db: sqlite3.Connection,
+    norad_id: int,
+    epoch_utc: datetime.datetime,
+    state_eci_km: list,
+    covariance_km2: list,
+    nis: float,
+    confidence: float,
+    anomaly_type: Optional[str],
+    message_type: str,
+) -> None:
+    """Write one state snapshot row to the state_history table.
+
+    Args:
+        db: Open SQLite connection.
+        norad_id: NORAD catalog ID.
+        epoch_utc: UTC epoch of the state (must be UTC-aware).
+        state_eci_km: 6-element list [x,y,z,vx,vy,vz] in km and km/s (ECI J2000).
+        covariance_km2: 3-element list of position covariance diagonal [P00,P11,P22].
+        nis: NIS value.
+        confidence: Confidence score.
+        anomaly_type: Anomaly type string or None.
+        message_type: One of state_update, anomaly, recalibration.
+    """
+    epoch_str: str = epoch_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+    db.execute(
+        """
+        INSERT INTO state_history
+            (norad_id, epoch_utc,
+             x_km, y_km, z_km, vx_km_s, vy_km_s, vz_km_s,
+             cov_x_km2, cov_y_km2, cov_z_km2,
+             nis, confidence, anomaly_type, message_type)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            norad_id,
+            epoch_str,
+            state_eci_km[0], state_eci_km[1], state_eci_km[2],
+            state_eci_km[3], state_eci_km[4], state_eci_km[5],
+            covariance_km2[0], covariance_km2[1], covariance_km2[2],
+            nis,
+            confidence,
+            anomaly_type,
+            message_type,
+        ),
+    )
+    db.commit()
+
+
+def process_single_object(
+    db: sqlite3.Connection,
+    entry: dict,
+    norad_id: int,
+    filter_states: dict,
+    tle_record: dict,
+) -> list[dict]:
+    """Run predict-update-anomaly-recalibrate for one catalog object.
+
+    This function is the shared core of both the live server processing loop
+    (main.py) and the offline replay script (scripts/replay.py). It is
+    synchronous and writes to SQLite directly. Callers decide whether to
+    broadcast the returned WebSocket message dicts.
+
+    Coordinate frame: all state vectors entering and leaving this function are
+    ECI J2000 km and km/s, as produced by propagator.tle_to_state_vector_eci_km.
+
+    Args:
+        db: Open SQLite connection (WAL mode recommended for concurrent access).
+        entry: Catalog entry dict with at minimum keys: norad_id, name,
+               object_class.
+        norad_id: NORAD catalog ID (int, already extracted from entry for
+                  convenience — must match entry["norad_id"]).
+        filter_states: Mutable dict of filter state dicts keyed by norad_id.
+                       Modified in place: new entries are added on cold start,
+                       existing entries are updated after each cycle.
+        tle_record: TLE dict with keys: norad_id, epoch_utc (ISO 8601 str),
+                    tle_line1, tle_line2, fetched_at.
+
+    Returns:
+        List of WebSocket message dicts (0–3 messages depending on path taken):
+        - Cold start: [state_update]
+        - Warm, no anomaly: [state_update]
+        - Warm, anomaly: [anomaly, recalibration]
+        Returns an empty list if the TLE epoch is not after the last filter epoch
+        (duplicate or out-of-order TLE).
+    """
+    tle_line1: str = tle_record["tle_line1"]
+    tle_line2: str = tle_record["tle_line2"]
+    epoch_utc_str: str = tle_record["epoch_utc"]
+
+    # Parse TLE epoch string to UTC-aware datetime.
+    # ingest.py stores epochs as 'YYYY-MM-DDTHH:MM:SSZ'.
+    epoch_utc: datetime.datetime = datetime.datetime.strptime(
+        epoch_utc_str, "%Y-%m-%dT%H:%M:%SZ"
+    ).replace(tzinfo=datetime.timezone.utc)
+
+    is_active_satellite: bool = entry.get("object_class") == "active_satellite"
+
+    if norad_id not in filter_states:
+        # Cold start: initialize filter from TLE state vector (ECI J2000).
+        logger.info("Initializing filter for NORAD %d", norad_id)
+        initial_state_eci_km: NDArray[np.float64] = (
+            propagator.tle_to_state_vector_eci_km(tle_line1, tle_line2, epoch_utc)
+        )
+        object_class: str = entry.get("object_class", kalman.OBJECT_CLASS_ACTIVE)
+        q_matrix: NDArray[np.float64] = kalman.OBJECT_CLASS_Q.get(
+            object_class, kalman.OBJECT_CLASS_Q[kalman.OBJECT_CLASS_ACTIVE]
+        )
+        filter_state: dict = kalman.init_filter(
+            state_eci_km=initial_state_eci_km,
+            epoch_utc=epoch_utc,
+            process_noise_q=q_matrix,
+        )
+        # Store the TLE used for this init so the next predict step uses
+        # the PREVIOUS TLE (not the new observation TLE) for propagation.
+        filter_state["last_tle_line1"] = tle_line1
+        filter_state["last_tle_line2"] = tle_line2
+        filter_states[norad_id] = filter_state
+
+        ws_message = _build_ws_message(
+            norad_id=norad_id,
+            filter_state=filter_state,
+            message_type=WS_TYPE_STATE_UPDATE,
+            anomaly_type=None,
+        )
+
+        _insert_state_history_row(
+            db=db,
+            norad_id=norad_id,
+            epoch_utc=epoch_utc,
+            state_eci_km=ws_message["eci_km"] + ws_message["eci_km_s"],
+            covariance_km2=ws_message["covariance_diagonal_km2"],
+            nis=ws_message["nis"],
+            confidence=ws_message["confidence"],
+            anomaly_type=None,
+            message_type=WS_TYPE_STATE_UPDATE,
+        )
+        return [ws_message]
+
+    # Existing filter: run predict -> update cycle.
+    filter_state = filter_states[norad_id]
+
+    # Guard: skip if new epoch is not strictly after last filter epoch.
+    last_epoch_utc: datetime.datetime = filter_state["last_epoch_utc"]
+    if epoch_utc <= last_epoch_utc:
+        logger.debug(
+            "NORAD %d: TLE epoch %s is not after last filter epoch %s — skipping",
+            norad_id,
+            epoch_utc.isoformat(),
+            last_epoch_utc.isoformat(),
+        )
+        return []
+
+    # Predict step: propagate using the PREVIOUS TLE (stored in filter_state)
+    # to the new observation epoch. Using the new TLE here would make prediction
+    # and observation identical, producing zero innovation.
+    prev_tle1: str = filter_state.get("last_tle_line1", tle_line1)
+    prev_tle2: str = filter_state.get("last_tle_line2", tle_line2)
+    kalman.predict(filter_state, epoch_utc, prev_tle1, prev_tle2)
+
+    # Observation: convert the NEW TLE to an ECI state vector (ECI J2000).
+    # This is distinct from the predicted state, producing a non-zero innovation.
+    observation_eci_km: NDArray[np.float64] = (
+        propagator.tle_to_state_vector_eci_km(tle_line1, tle_line2, epoch_utc)
+    )
+
+    # Store TLE for the next predict cycle.
+    filter_state["last_tle_line1"] = tle_line1
+    filter_state["last_tle_line2"] = tle_line2
+
+    # Update step: incorporate new observation.
+    kalman.update(filter_state, observation_eci_km, epoch_utc)
+
+    nis_val: float = filter_state["nis"]
+    nis_history: list = filter_state["nis_history"]
+    innovation_eci_km_list: list = filter_state["innovation_eci_km"].tolist()
+
+    # Anomaly classification.
+    detected_anomaly_type: Optional[str] = anomaly.classify_anomaly(
+        norad_id=norad_id,
+        nis_history=nis_history,
+        innovation_eci_km=innovation_eci_km_list,
+        is_active_satellite=is_active_satellite,
+    )
+
+    messages: list[dict] = []
+
+    if detected_anomaly_type is not None:
+        # Record anomaly, trigger recalibration, recalibrate filter.
+        anomaly_row_id: int = anomaly.record_anomaly(
+            db=db,
+            norad_id=norad_id,
+            detection_epoch_utc=epoch_utc,
+            anomaly_type=detected_anomaly_type,
+            nis_value=nis_val,
+        )
+
+        recal_params: dict = anomaly.trigger_recalibration(
+            norad_id=norad_id,
+            anomaly_type=detected_anomaly_type,
+            epoch_utc=epoch_utc,
+        )
+
+        filter_state = kalman.recalibrate(
+            filter_state=filter_state,
+            new_observation_eci_km=observation_eci_km,
+            epoch_utc=epoch_utc,
+            inflation_factor=recal_params["inflation_factor"],
+        )
+        # Preserve TLE lines so the next predict step uses the current TLE
+        # as the prior (not the new observation TLE, which would give zero innovation).
+        filter_state["last_tle_line1"] = tle_line1
+        filter_state["last_tle_line2"] = tle_line2
+        filter_states[norad_id] = filter_state
+
+        # Store the anomaly row ID and detection epoch so the next NIS-normal
+        # cycle can call record_recalibration_complete.
+        filter_state["_anomaly_row_id"] = anomaly_row_id
+        filter_state["_anomaly_detection_epoch_utc"] = epoch_utc
+
+        anomaly_ws_message = _build_ws_message(
+            norad_id=norad_id,
+            filter_state=filter_state,
+            message_type=WS_TYPE_ANOMALY,
+            anomaly_type=detected_anomaly_type,
+        )
+        # recalibrate() resets nis=0 and innovation_eci_km=zeros on the new
+        # filter state, so the message above will have picked up zeroed values.
+        # Override with the pre-recalibration values captured before recalibrate().
+        anomaly_ws_message["nis"] = nis_val
+        anomaly_ws_message["innovation_eci_km"] = innovation_eci_km_list
+
+        recal_ws_message = _build_ws_message(
+            norad_id=norad_id,
+            filter_state=filter_state,
+            message_type=WS_TYPE_RECALIBRATION,
+            anomaly_type=detected_anomaly_type,
+        )
+
+        _insert_state_history_row(
+            db=db,
+            norad_id=norad_id,
+            epoch_utc=epoch_utc,
+            state_eci_km=anomaly_ws_message["eci_km"] + anomaly_ws_message["eci_km_s"],
+            covariance_km2=anomaly_ws_message["covariance_diagonal_km2"],
+            nis=nis_val,
+            confidence=anomaly_ws_message["confidence"],
+            anomaly_type=detected_anomaly_type,
+            message_type=WS_TYPE_ANOMALY,
+        )
+
+        messages.append(anomaly_ws_message)
+        messages.append(recal_ws_message)
+
+    else:
+        # No anomaly — check if a previously-flagged anomaly has now resolved.
+        anomaly_row_id_pending: Optional[int] = filter_state.pop(
+            "_anomaly_row_id", None
+        )
+        detection_epoch_pending: Optional[datetime.datetime] = filter_state.pop(
+            "_anomaly_detection_epoch_utc", None
+        )
+        if (
+            anomaly_row_id_pending is not None
+            and detection_epoch_pending is not None
+            and not anomaly.evaluate_nis(nis_val)
+        ):
+            try:
+                anomaly.record_recalibration_complete(
+                    db=db,
+                    anomaly_row_id=anomaly_row_id_pending,
+                    resolution_epoch_utc=epoch_utc,
+                )
+                logger.info(
+                    "NORAD %d recalibration complete, row_id=%d",
+                    norad_id,
+                    anomaly_row_id_pending,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    "Failed to record recalibration complete for NORAD %d: %s",
+                    norad_id,
+                    exc,
+                )
+
+        ws_message = _build_ws_message(
+            norad_id=norad_id,
+            filter_state=filter_state,
+            message_type=WS_TYPE_STATE_UPDATE,
+            anomaly_type=None,
+        )
+
+        _insert_state_history_row(
+            db=db,
+            norad_id=norad_id,
+            epoch_utc=epoch_utc,
+            state_eci_km=ws_message["eci_km"] + ws_message["eci_km_s"],
+            covariance_km2=ws_message["covariance_diagonal_km2"],
+            nis=ws_message["nis"],
+            confidence=ws_message["confidence"],
+            anomaly_type=None,
+            message_type=WS_TYPE_STATE_UPDATE,
+        )
+
+        messages.append(ws_message)
+
+    return messages

@@ -364,6 +364,16 @@ the requirement or architecture section they relate to.
   pipeline.
 - **Status:** Open
 
+### TD-024: Replace CesiumJS Entity API with CZML DataSource
+- **Priority:** P3
+- **Source:** `frontend/src/globe.js` (POC implementation)
+- **Relates to:** architecture.md section 3.6.1
+- **Description:** POC uses CesiumJS Entity API for simplicity. Architecture.md specifies CZML DataSource for interpolation between updates. At large catalog scale (1000+ objects), Entity API becomes a performance bottleneck.
+- **Resolution path:** Rewrite globe.js to maintain a CesiumJS CzmlDataSource, patching it with CZML packets per WebSocket message. Enables time-interpolated playback and is the correct architecture for the production renderer.
+- **Status:** Open
+
+---
+
 ### TD-023: scripts/replay.py and scripts/seed_maneuver.py are not implemented
 - **Priority:** P1
 - **Source:** `scripts/replay.py` line 21; `scripts/seed_maneuver.py` line 29
@@ -377,4 +387,8 @@ the requirement or architecture section they relate to.
   the event bus). Implement `inject_maneuver()` to construct a synthetic TLE with an
   applied delta-V offset in the specified direction (along-track/cross-track/radial) and
   insert it into the TLE cache with a future epoch.
-- **Status:** Open
+- **Status:** [RESOLVED] 2026-03-28 — scripts implemented per plan docs/plans/2026-03-28-scripts.md.
+  `backend/processing.py` extracted shared pipeline. `scripts/replay.py` and
+  `scripts/seed_maneuver.py` fully implemented with tests in `tests/test_processing.py`,
+  `tests/test_replay.py`, `tests/test_seed_maneuver.py`. Admin endpoint
+  `POST /admin/trigger-process` added to `main.py` for NF-023 compliance.

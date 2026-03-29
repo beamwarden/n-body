@@ -56,11 +56,13 @@ OBJECT_CLASS_Q: dict[str, NDArray[np.float64]] = {
 }
 
 # Default measurement noise matrix R (F-025).
-# TLE positional uncertainty: ~1 km (1-sigma) for publicly available TLEs.
-# Velocity uncertainty: ~0.01 km/s derived from TLE mean-motion precision.
+# Calibrated against measured ISS TLE-to-TLE prediction error: ~30 km position
+# (1-sigma), ~0.045 km/s velocity. Variance = sigma^2: 30^2 = 900 km^2 position,
+# 0.045^2 ≈ 0.002 (km/s)^2 velocity.  Using tighter values (e.g. 1.0 km^2) causes
+# NIS >> threshold on every normal update, driving perpetual spurious recalibration.
 # These are diagonal; off-diagonal correlation is neglected for POC.
 DEFAULT_R: NDArray[np.float64] = np.diag(
-    [1.0, 1.0, 1.0, 1e-4, 1e-4, 1e-4]
+    [900.0, 900.0, 900.0, 2e-3, 2e-3, 2e-3]
 ).astype(np.float64)
 
 

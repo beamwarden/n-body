@@ -71,11 +71,9 @@ def test_propagate_tle_rejects_malformed_tle() -> None:
     with pytest.raises(ValueError):
         propagate_tle("not a tle line 1", "not a tle line 2", epoch_utc)
 
-    # Case 2: valid line 1, corrupted line 2 (bad checksum — last digit changed)
-    corrupted_line2 = _ISS_LINE2[:-1] + ("0" if _ISS_LINE2[-1] != "0" else "1")
-    with pytest.raises((ValueError, Exception)):
-        # sgp4 may raise or return error code on bad checksum; either is acceptable
-        propagate_tle(_ISS_LINE1, corrupted_line2, epoch_utc)
+    # Case 2: bad checksum is NOT tested here — the sgp4 library does not validate
+    # TLE checksums in Satrec.twoline2rv; it accepts and propagates silently.
+    # Checksum validation (F-003) is the responsibility of ingest.py, not the propagator.
 
 
 # ---------------------------------------------------------------------------
@@ -216,12 +214,14 @@ def test_propagation_output_is_eci_j2000() -> None:
     vel_diff_km_s = float(np.linalg.norm(velocity_eci_km_s - velocity_teme_km_s))
 
     # The TEME-to-J2000 rotation is non-trivial — difference should be > 0.01 km.
-    # It is also small — at most ~20 km for LEO at worst nutation angles.
+    # Upper bound: TEME vs GCRS includes ~24 years of precession from J2000 epoch
+    # (~0.33° for a 2024 TLE), which at ISS altitude (~6770 km) produces ~25-30 km
+    # of frame offset. 50 km is a generous upper bound that still catches gross errors.
     assert pos_diff_km > 0.01, (
         f"Position difference {pos_diff_km:.4f} km is suspiciously small — "
         "TEME-to-J2000 conversion may not be applied."
     )
-    assert pos_diff_km < 20.0, (
+    assert pos_diff_km < 50.0, (
         f"Position difference {pos_diff_km:.4f} km is larger than expected "
         "for a TEME-to-GCRS rotation — possible implementation error."
     )
@@ -229,7 +229,9 @@ def test_propagation_output_is_eci_j2000() -> None:
         f"Velocity difference {vel_diff_km_s:.6f} km/s is suspiciously small — "
         "TEME-to-J2000 conversion may not be applied."
     )
-    assert vel_diff_km_s < 0.02, (
+    # 0.05 km/s upper bound: same precession argument as position — ~0.33° rotation
+    # applied to ~7.66 km/s orbital speed yields ~0.044 km/s maximum difference.
+    assert vel_diff_km_s < 0.05, (
         f"Velocity difference {vel_diff_km_s:.6f} km/s larger than expected."
     )
 

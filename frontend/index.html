@@ -12,26 +12,86 @@
     <!-- D3.js v7 from CDN -->
     <script src="https://d3js.org/d3.v7.min.js"></script>
 
-    <!--
-        CESIUM ION TOKEN CONFIGURATION:
-        The Cesium Ion access token must NOT be hardcoded here.
-        It must be injected at runtime from a server-side configuration endpoint
-        or a build-time environment variable substitution step.
-        See CLAUDE.md: "CesiumJS Ion token is hardcoded in globe.js —
-        must be moved to env var before any public deployment."
-        For local demo: set CESIUM_ION_TOKEN in the environment and inject
-        via a /config endpoint on the backend.
-    -->
+    <!-- Cesium Ion token is injected at runtime via GET /config in main.js. -->
 
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { display: flex; flex-direction: column; height: 100vh; background: #0a0a0f; color: #e0e0e0; font-family: monospace; }
-        #header { padding: 8px 16px; background: #111118; border-bottom: 1px solid #222; font-size: 14px; }
+        /* NF-022: 18px header for legibility on 1920x1080 projected display at 3m */
+        #header { padding: 8px 16px; background: #111118; border-bottom: 1px solid #222; font-size: 18px; }
         #main-layout { display: flex; flex: 1; overflow: hidden; }
         #cesium-container { flex: 1; height: 100%; }
-        #side-panel { width: 380px; display: flex; flex-direction: column; border-left: 1px solid #222; }
-        #residual-chart { flex: 1; padding: 8px; border-bottom: 1px solid #222; overflow: hidden; }
-        #alert-panel { height: 240px; padding: 8px; overflow-y: auto; }
+        /* NF-022: minimum 14px for side panel text */
+        #side-panel { width: 380px; display: flex; flex-direction: column; border-left: 1px solid #222; font-size: 14px; }
+        #residual-chart { flex: 1; padding: 8px; border-bottom: 1px solid #222; overflow: hidden; font-size: 14px; }
+        #alert-panel { height: 240px; padding: 8px; overflow-y: auto; font-size: 14px; }
+
+        /* Alert panel styles (F-055) */
+        .alert-header {
+            font-size: 14px;
+            font-weight: bold;
+            border-bottom: 1px solid #444;
+            padding-bottom: 4px;
+            margin-bottom: 6px;
+            color: #aaa;
+            letter-spacing: 0.05em;
+        }
+        .alert-list {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .alert-item {
+            padding: 6px 8px;
+            border: 1px solid #333;
+            border-radius: 3px;
+            background: #12121a;
+            font-size: 13px;
+            line-height: 1.5;
+            transition: opacity 0.3s;
+        }
+        .alert-item.active {
+            border-color: #ff4444;
+            animation: alert-pulse 1.2s ease-in-out infinite alternate;
+        }
+        .alert-item.recalibrating {
+            border-color: #ffaa00;
+        }
+        .alert-item.resolved {
+            opacity: 0.6;
+            border-color: #333;
+        }
+        @keyframes alert-pulse {
+            from { border-color: #ff4444; }
+            to   { border-color: #ff000080; }
+        }
+        .alert-type-badge {
+            display: inline-block;
+            padding: 1px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: bold;
+            text-transform: uppercase;
+            margin-right: 4px;
+        }
+        .alert-type-badge.maneuver        { background: #c0000099; color: #ffcccc; }
+        .alert-type-badge.drag_anomaly    { background: #cc660099; color: #ffe0cc; }
+        .alert-type-badge.filter_divergence { background: #550077aa; color: #ddaaff; }
+        .alert-status {
+            font-size: 11px;
+            font-weight: bold;
+            text-transform: uppercase;
+            padding: 1px 5px;
+            border-radius: 3px;
+        }
+        .alert-status.active        { color: #ff6666; }
+        .alert-status.recalibrating { color: #ffaa44; }
+        .alert-status.resolved      { color: #66cc66; }
+
+        /* Confidence color utility classes */
+        .conf-green  { color: #66ff66; }
+        .conf-amber  { color: #ffaa00; }
+        .conf-red    { color: #ff4444; }
     </style>
 </head>
 <body>
@@ -46,5 +106,10 @@
 
     <!-- Application JS modules (ES2022, loaded as modules) -->
     <script type="module" src="src/main.js"></script>
+    <noscript>
+        <div style="position:fixed;top:0;left:0;width:100%;padding:20px;background:#300;color:#fff;font-size:18px;text-align:center;z-index:9999;">
+            JavaScript is required to run the n-body SSA Platform.
+        </div>
+    </noscript>
 </body>
 </html>

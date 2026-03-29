@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>n-body — ECI Conversion Unit Tests</title>
+    <style>
+        body { font-family: monospace; background: #0a0a0f; color: #ccc; padding: 20px; }
+        h1 { color: #00ccff; font-size: 18px; margin-bottom: 16px; }
+        h2 { color: #aaa; font-size: 14px; margin-top: 20px; margin-bottom: 8px; border-bottom: 1px solid #333; padding-bottom: 4px; }
+        .pass { color: #66ff66; }
+        .fail { color: #ff4444; font-weight: bold; }
+        .info { color: #aaa; font-size: 12px; }
+        pre  { margin: 0; }
+        .summary { margin-top: 24px; font-size: 14px; border-top: 2px solid #333; padding-top: 12px; }
+        .result-line { margin: 3px 0; font-size: 13px; }
+    </style>
+</head>
+<body>
+    <h1>n-body — ECI-to-ECEF Conversion Tests</h1>
+    <p class="info">Tests for <code>eciToEcefCartesian3</code> in <code>frontend/src/globe.js</code>.
+    These tests run inline using a copy of the conversion function to avoid CDN dependency.
+    See plan docs/plans/2026-03-28-frontend.md Test Strategy section.</p>
+
+    <div id="output"></div>
+    <div class="summary" id="summary"></div>
+
+    <script>
+    // ---------------------------------------------------------------------------
+    // Inline copy of eciToEcefCartesian3 for testing (no Cesium dependency).
+    // Returns a plain {x, y, z} object in metres instead of Cesium.Cartesian3.
+    // The formula is identical to globe.js step 8.
+    // ---------------------------------------------------------------------------
+    function eciToEcefMeters(eci_km, epoch_utc_str) {
+        const epochMs = Date.parse(epoch_utc_str);
+
+        // Days since J2000.0 (2000-01-01T12:00:00Z = 946728000000 ms)
+        const daysSinceJ2000 = (epochMs - 946728000000) / 86400000;
+
+        // GMST in degrees using Vallado simplified formula, then convert to radians
+        const gmst_deg = (280.46061837 + 360.98564736629 * daysSinceJ2000) % 360;
+        const gmst_rad = gmst_deg * Math.PI / 180;
+
+        const cos_gmst = Math.cos(gmst_rad);
+        const sin_gmst = Math.sin(gmst_rad);
+
+        const x_eci_km = eci_km[0];
+        const y_eci_km = eci_km[1];
+        const z_eci_km = eci_km[2];
+
+        // Apply Z-rotation (ECI to ECEF)
+        const x_ecef_km =  x_eci_km * cos_gmst + y_eci_km * sin_gmst;
+        const y_ecef_km = -x_eci_km * sin_gmst + y_eci_km * cos_gmst;
+        const z_ecef_km =  z_eci_km;
+
+        return { x: x_ecef_km * 1000, y: y_ecef_km * 1000, z: z_ecef_km * 1000 };
+    }
+
+    // ---------------------------------------------------------------------------
+    // Minimal test harness
+    // ---------------------------------------------------------------------------
+    let passCount = 0;
+    let failCount = 0;
+    const outputEl = document.getElementById('output');
+
+    function assert(label, condition, detail) {
+        const line = document.createElement('div');
+        line.className = 'result-line';
+        if (condition) {
+            line.innerHTML = `<span class="pass">PASS</span>  ${label}`;
+            passCount++;
+        } else {
+            line.innerHTML = `<span class="fail">FAIL</span>  ${label}` +
+                (detail ? `<br>&nbsp;&nbsp;&nbsp;&nbsp;<span class="info">${detail}</span>` : '');
+            failCount++;
+        }
+        outputEl.appendChild(line);
+    }
+
+    function assertNear(label, actual, expected, tolerance) {
+        const diff = Math.abs(actual - expected);
+        const ok = diff <= tolerance;
+        assert(label, ok, ok ? null : `actual=${actual.toFixed(4)}, expected=${expected.toFixed(4)}, diff=${diff.toFixed(4)}, tol=${tolerance}`);
+    }
+
+    function section(title) {
+        const h = document.createElement('h2');
+        h.textContent = title;
+        outputEl.appendChild(h);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Test 1: GMST at J2000.0 epoch
+    // At J2000.0 (2000-01-01T12:00:00Z), daysSinceJ2000 = 0.
+    // GMST = 280.46061837 degrees.
+    // A unit vector along ECI +X at this epoch should rotate to
+    //   x_ecef = cos(280.46 deg)  ≈ 0.1822
+    //   y_ecef = -sin(280.46 deg) ≈ 0.9833
+    // (Because sin(280.46 deg) ≈ -0.9833, so -sin = 0.9833, but here eci_km=[1,0,0]:
+    //   x_ecef = 1*cos + 0*sin = cos(gmst)
+    //   y_ecef = -1*sin + 0*cos = -sin(gmst))
+    // ---------------------------------------------------------------------------
+    section('Test 1: J2000.0 epoch GMST rotation (unit vector along ECI +X)');
+    {
+        const epochStr = '2000-01-01T12:00:00Z';
+        const eciKm = [1, 0, 0];  // unit ECI vector (km scale doesn't matter for angle test)
+        const result = eciToEcefMeters(eciKm, epochStr);
+
+        // GMST at J2000.0 = 280.46061837 deg
+        const gmst_deg = 280.46061837;
+        const gmst_rad = gmst_deg * Math.PI / 180;
+        const expected_x_m = Math.cos(gmst_rad) * 1000;
+        const expected_y_m = -Math.sin(gmst_rad) * 1000;
+        const expected_z_m = 0;
+
+        // Tolerance: 0.01 m (sub-centimetre)
+        assertNear('x_ecef matches cos(GMST at J2000.0) * 1000 m', result.x, expected_x_m, 0.01);
+        assertNear('y_ecef matches -sin(GMST at J2000.0) * 1000 m', result.y, expected_y_m, 0.01);
+        assertNear('z_ecef = 0 (no z-component in Z-rotation)', result.z, expected_z_m, 0.01);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Test 2: ECI Z-axis unchanged (GMST rotation is around Z)
+    // ---------------------------------------------------------------------------
+    section('Test 2: ECI Z-axis is unchanged by GMST rotation');
+    {
+        const epochStr = '2026-03-28T19:00:00Z';
+        const eciKm = [0, 0, 6371];  // ECI +Z, roughly Earth radius
+        const result = eciToEcefMeters(eciKm, epochStr);
+
+        assertNear('x_ecef = 0 for pure ECI Z vector', result.x, 0, 1);
+        assertNear('y_ecef = 0 for pure ECI Z vector', result.y, 0, 1);
+        assertNear('z_ecef = 6371 km * 1000 = 6371000 m', result.z, 6371000, 1);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Test 3: Magnitude preserved (rotation preserves vector length)
+    // ---------------------------------------------------------------------------
+    section('Test 3: Vector magnitude is preserved by GMST rotation');
+    {
+        const epochStr = '2026-03-28T12:00:00Z';
+        // Typical ISS-like ECI position (km)
+        const eciKm = [3000, -5000, 3500];
+        const result = eciToEcefMeters(eciKm, epochStr);
+
+        const magIn  = Math.sqrt(eciKm[0]**2 + eciKm[1]**2 + eciKm[2]**2) * 1000;
+        const magOut = Math.sqrt(result.x**2 + result.y**2 + result.z**2);
+
+        // Tolerance: 1 m (floating point)
+        assertNear('ECEF magnitude equals ECI magnitude (rotation preserves length)', magOut, magIn, 1);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Test 4: daysSinceJ2000 computation
+    // J2000.0 = 2000-01-01T12:00:00Z, Date.parse → 946728000000 ms.
+    // 2000-01-02T12:00:00Z should give daysSinceJ2000 = 1.0 exactly.
+    // GMST should advance by 360.98564736629 degrees from J2000.0 value.
+    // ---------------------------------------------------------------------------
+    section('Test 4: daysSinceJ2000 = 1.0 for 2000-01-02T12:00:00Z');
+    {
+        const epoch1 = '2000-01-01T12:00:00Z';
+        const epoch2 = '2000-01-02T12:00:00Z';
+        const ms1 = Date.parse(epoch1);
+        const ms2 = Date.parse(epoch2);
+        const days1 = (ms1 - 946728000000) / 86400000;
+        const days2 = (ms2 - 946728000000) / 86400000;
+
+        assertNear('daysSinceJ2000 at J2000.0 = 0.0', days1, 0.0, 1e-10);
+        assertNear('daysSinceJ2000 at J2000.0+1d = 1.0', days2, 1.0, 1e-10);
+
+        // GMST should differ by 360.98564736629 degrees (one sidereal day)
+        const gmst1_deg = (280.46061837 + 360.98564736629 * days1);
+        const gmst2_deg = (280.46061837 + 360.98564736629 * days2);
+        const diff_deg = gmst2_deg - gmst1_deg;
+        assertNear('GMST advances ~360.986 degrees per sidereal day', diff_deg, 360.98564736629, 1e-6);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Test 5: ISS-like position at a known epoch — latitude band check.
+    // ISS orbital inclination ~51.6 degrees. Position in ECI at a typical epoch
+    // should map to an ECEF position whose geodetic latitude is within [-52, +52] degrees.
+    // This is a sanity check, not a precision assertion.
+    // ---------------------------------------------------------------------------
+    section('Test 5: ISS-like ECI position maps to plausible latitude band (within 52 deg)');
+    {
+        // Typical ISS ECI position at 2026-03-28T19:00:00Z (realistic order-of-magnitude)
+        // Using a simplified position: altitude ~420 km, inclination ~51.6 deg
+        const epochStr = '2026-03-28T19:00:00Z';
+        // ECI position plausibly near ISS (km)
+        const eciKm = [1200, -6400, 2900];
+        const result = eciToEcefMeters(eciKm, epochStr);
+
+        // Compute geodetic latitude from ECEF (WGS84 approximation: spherical)
+        const mag_m = Math.sqrt(result.x**2 + result.y**2 + result.z**2);
+        const lat_rad = Math.asin(result.z / mag_m);
+        const lat_deg = lat_rad * 180 / Math.PI;
+
+        // ISS stays within ±52 degrees of latitude
+        const withinLatBand = Math.abs(lat_deg) <= 52;
+        assert(`Latitude ${lat_deg.toFixed(2)} deg is within ±52 deg (ISS inclination limit)`, withinLatBand);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Test 6: Confidence color boundary values
+    // Tests the logic in globe.js confidenceColor (inline for no-Cesium context).
+    // Boundaries: >0.85 green, >=0.60 amber, <0.60 red.
+    // ---------------------------------------------------------------------------
+    section('Test 6: Confidence color boundary values');
+    {
+        // Inline replica of confidenceColor logic (returns string label)
+        function confidenceLabel(confidence) {
+            if (confidence > 0.85) return 'green';
+            if (confidence >= 0.60) return 'amber';
+            return 'red';
+        }
+
+        assert('confidence=1.00 → green',  confidenceLabel(1.00) === 'green');
+        assert('confidence=0.86 → green',  confidenceLabel(0.86) === 'green');
+        assert('confidence=0.85 → amber',  confidenceLabel(0.85) === 'amber');
+        assert('confidence=0.60 → amber',  confidenceLabel(0.60) === 'amber');
+        assert('confidence=0.59 → red',    confidenceLabel(0.59) === 'red');
+        assert('confidence=0.00 → red',    confidenceLabel(0.00) === 'red');
+    }
+
+    // ---------------------------------------------------------------------------
+    // Test 7: Data store sliding window (residuals.js DATA_WINDOW=100 logic)
+    // ---------------------------------------------------------------------------
+    section('Test 7: Sliding window cap at 100 entries (residuals.js logic)');
+    {
+        const DATA_WINDOW = 100;
+        const buffer = [];
+
+        // Push 105 entries
+        for (let i = 0; i < 105; i++) {
+            buffer.push({ idx: i });
+            if (buffer.length > DATA_WINDOW) {
+                buffer.shift();
+            }
+        }
+
+        assert('Buffer length does not exceed DATA_WINDOW=100', buffer.length === 100);
+        assert('Oldest retained entry is idx=5 (entries 0-4 were shifted out)', buffer[0].idx === 5);
+        assert('Newest entry is idx=104', buffer[99].idx === 104);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Summary
+    // ---------------------------------------------------------------------------
+    const summaryEl = document.getElementById('summary');
+    summaryEl.innerHTML =
+        `<strong>Results: ` +
+        `<span class="${failCount === 0 ? 'pass' : 'fail'}">${passCount} passed</span>, ` +
+        `<span class="${failCount > 0 ? 'fail' : 'info'}">${failCount} failed</span>` +
+        ` of ${passCount + failCount} total.</strong>`;
+    </script>
+</body>
+</html>

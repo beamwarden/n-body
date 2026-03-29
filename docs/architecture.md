@@ -132,6 +132,7 @@ Every new TLE update is both a data point and a validation of the previous predi
   "eci_km_s": [vx, vy, vz],
   "covariance_diagonal_km2": [σx², σy², σz²],
   "nis": 2.3,
+  "innovation_eci_km": [dx, dy, dz, dvx, dvy, dvz],
   "confidence": 0.94,
   "anomaly_type": null | "maneuver" | "drag_anomaly" | "filter_divergence"
 }
