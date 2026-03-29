@@ -30,6 +30,48 @@ const DATA_WINDOW = 100;
 const NIS_THRESHOLD = 12.592;
 
 // ---------------------------------------------------------------------------
+// Steps 5-6: Anomaly marker store and addAnomalyMarker export
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-object anomaly marker store.
+ * Keys are NORAD IDs; values are arrays of {epoch_utc: Date, anomaly_type: string}.
+ * Capped at 20 markers per object (sliding window).
+ *
+ * @type {Map<number, Array<{epoch_utc: Date, anomaly_type: string}>>}
+ */
+const anomalyMarkerStore = new Map();
+
+/** Maximum anomaly markers retained per object. */
+const MARKER_WINDOW = 20;
+
+/**
+ * Store an anomaly marker and trigger redraw if the affected object is selected.
+ * Called by main.js on anomaly messages. (Steps 6, 8)
+ *
+ * @param {Object} chartState - Chart state from initResidualChart.
+ * @param {number} noradId - NORAD catalog ID.
+ * @param {string} epochUtcStr - ISO-8601 UTC epoch string from the anomaly message.
+ * @param {string} anomalyType - Anomaly type string ('maneuver' | 'drag_anomaly' | 'filter_divergence').
+ * @returns {void}
+ */
+export function addAnomalyMarker(chartState, noradId, epochUtcStr, anomalyType) {
+    if (!anomalyMarkerStore.has(noradId)) {
+        anomalyMarkerStore.set(noradId, []);
+    }
+    const markers = anomalyMarkerStore.get(noradId);
+    markers.push({ epoch_utc: new Date(epochUtcStr), anomaly_type: anomalyType || 'unknown' });
+    // Enforce sliding window cap
+    if (markers.length > MARKER_WINDOW) {
+        markers.shift();
+    }
+    // Trigger redraw if this object is currently displayed
+    if (chartState && noradId === chartState.selectedNoradId) {
+        _redrawChart(chartState, noradId);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Step 16: initResidualChart
 // ---------------------------------------------------------------------------
 
@@ -174,6 +216,14 @@ export function initResidualChart(containerId) {
     // Position threshold line once with initial scale
     _positionNisThreshold(nisThresholdLine, yScaleBottom, bottomHeight);
 
+    // Step 1: Create shared tooltip div for hover interactions.
+    // position:relative is required on containerEl for absolute positioning of tooltip.
+    containerEl.style.position = 'relative';
+    const tooltipEl = document.createElement('div');
+    tooltipEl.className = 'chart-tooltip';
+    tooltipEl.style.display = 'none';
+    containerEl.appendChild(tooltipEl);
+
     const chartState = {
         svg,
         topGroup,
@@ -197,6 +247,7 @@ export function initResidualChart(containerId) {
         bottomHeight,
         selectedNoradId: null,
         containerEl,
+        tooltipEl,
     };
 
     // Set up ResizeObserver for container resize
@@ -299,6 +350,7 @@ function _redrawChart(chartState, noradId) {
         lineResidualPath, lineNisPath, areaBand, nisThresholdLine,
         topDotsG, bottomDotsG,
         innerWidth, topHeight, bottomHeight,
+        tooltipEl, containerEl,
     } = chartState;
 
     // Update x scale domain (shared for both charts)
@@ -352,9 +404,10 @@ function _redrawChart(chartState, noradId) {
         .attr('d', lineNisGenerator);
 
     // Data point circles (top chart) — colored by confidence
-    const topCircles = topDotsG.selectAll('circle').data(data, (d) => d.epoch_utc.getTime());
+    const topCircles = topDotsG.selectAll('circle.visible-dot').data(data, (d) => d.epoch_utc.getTime());
     topCircles.enter()
         .append('circle')
+        .attr('class', 'visible-dot')
         .attr('r', 3)
         .merge(topCircles)
         .attr('cx', (d) => xScaleTop(d.epoch_utc))
@@ -362,16 +415,132 @@ function _redrawChart(chartState, noradId) {
         .attr('fill', (d) => _confidenceHex(d.confidence));
     topCircles.exit().remove();
 
+    // Step 2: Invisible hover targets (top chart) — larger hit area to avoid flicker.
+    const topHoverCircles = topDotsG.selectAll('circle.hover-target').data(data, (d) => d.epoch_utc.getTime());
+    topHoverCircles.enter()
+        .append('circle')
+        .attr('class', 'hover-target')
+        .attr('r', 8)
+        .attr('fill-opacity', 0)
+        .style('cursor', 'pointer')
+        .merge(topHoverCircles)
+        .attr('cx', (d) => xScaleTop(d.epoch_utc))
+        .attr('cy', (d) => yScaleTop(d.residual_magnitude_km))
+        .on('mouseenter', function (event, d) {
+            const epochStr = d.epoch_utc.toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
+            tooltipEl.innerHTML =
+                `Epoch: ${epochStr}<br>Residual: ${d.residual_magnitude_km.toFixed(3)} km<br>NIS: ${d.nis.toFixed(2)}`;
+            const rect = containerEl.getBoundingClientRect();
+            const ex = event.clientX - rect.left;
+            const ey = event.clientY - rect.top;
+            // Clamp to avoid overflow off the right edge
+            const tipWidth = 220;
+            const leftPx = (ex + tipWidth > containerEl.clientWidth) ? ex - tipWidth - 8 : ex + 12;
+            tooltipEl.style.left = leftPx + 'px';
+            tooltipEl.style.top = (ey - 10) + 'px';
+            tooltipEl.style.display = 'block';
+        })
+        .on('mouseleave', function () {
+            tooltipEl.style.display = 'none';
+        });
+    topHoverCircles.exit().remove();
+
     // Data point circles (bottom chart) — colored by confidence
-    const bottomCircles = bottomDotsG.selectAll('circle').data(data, (d) => d.epoch_utc.getTime());
+    const bottomCircles = bottomDotsG.selectAll('circle.visible-dot').data(data, (d) => d.epoch_utc.getTime());
     bottomCircles.enter()
         .append('circle')
+        .attr('class', 'visible-dot')
         .attr('r', 3)
         .merge(bottomCircles)
         .attr('cx', (d) => xScaleBottom(d.epoch_utc))
         .attr('cy', (d) => yScaleBottom(d.nis))
         .attr('fill', (d) => _confidenceHex(d.confidence));
     bottomCircles.exit().remove();
+
+    // Step 3: Invisible hover targets (bottom chart).
+    const bottomHoverCircles = bottomDotsG.selectAll('circle.hover-target').data(data, (d) => d.epoch_utc.getTime());
+    bottomHoverCircles.enter()
+        .append('circle')
+        .attr('class', 'hover-target')
+        .attr('r', 8)
+        .attr('fill-opacity', 0)
+        .style('cursor', 'pointer')
+        .merge(bottomHoverCircles)
+        .attr('cx', (d) => xScaleBottom(d.epoch_utc))
+        .attr('cy', (d) => yScaleBottom(d.nis))
+        .on('mouseenter', function (event, d) {
+            const epochStr = d.epoch_utc.toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
+            tooltipEl.innerHTML =
+                `Epoch: ${epochStr}<br>NIS: ${d.nis.toFixed(2)}<br>Residual: ${d.residual_magnitude_km.toFixed(3)} km`;
+            const rect = containerEl.getBoundingClientRect();
+            const ex = event.clientX - rect.left;
+            const ey = event.clientY - rect.top;
+            const tipWidth = 220;
+            const leftPx = (ex + tipWidth > containerEl.clientWidth) ? ex - tipWidth - 8 : ex + 12;
+            tooltipEl.style.left = leftPx + 'px';
+            tooltipEl.style.top = (ey - 10) + 'px';
+            tooltipEl.style.display = 'block';
+        })
+        .on('mouseleave', function () {
+            tooltipEl.style.display = 'none';
+        });
+    bottomHoverCircles.exit().remove();
+
+    // Step 7: Anomaly marker vertical lines on both charts.
+    const markers = anomalyMarkerStore.get(noradId) || [];
+
+    // Abbreviated labels for anomaly type display on chart
+    const _anomalyAbbrev = (t) => {
+        if (t === 'maneuver') return 'MNV';
+        if (t === 'drag_anomaly') return 'DRG';
+        if (t === 'filter_divergence') return 'DIV';
+        return t ? t.substring(0, 3).toUpperCase() : '???';
+    };
+
+    // Top chart anomaly marker lines
+    const topMarkers = topGroup.selectAll('.anomaly-marker-line').data(markers, (d) => d.epoch_utc.getTime());
+    topMarkers.enter()
+        .append('line')
+        .attr('class', 'anomaly-marker-line')
+        .attr('stroke', '#ff4444')
+        .attr('stroke-dasharray', '4,3')
+        .attr('stroke-width', 1)
+        .merge(topMarkers)
+        .attr('x1', (d) => xScaleTop(d.epoch_utc))
+        .attr('x2', (d) => xScaleTop(d.epoch_utc))
+        .attr('y1', 0)
+        .attr('y2', topHeight);
+    topMarkers.exit().remove();
+
+    // Top chart anomaly marker labels
+    const topMarkerLabels = topGroup.selectAll('.anomaly-marker-label').data(markers, (d) => d.epoch_utc.getTime());
+    topMarkerLabels.enter()
+        .append('text')
+        .attr('class', 'anomaly-marker-label')
+        .attr('fill', '#ff4444')
+        .attr('font-size', '10px')
+        .attr('font-family', 'monospace')
+        .attr('text-anchor', 'middle')
+        .merge(topMarkerLabels)
+        .attr('x', (d) => xScaleTop(d.epoch_utc))
+        .attr('y', -4)
+        .text((d) => _anomalyAbbrev(d.anomaly_type));
+    topMarkerLabels.exit().remove();
+
+    // Bottom chart anomaly marker lines
+    const bottomMarkers = bottomGroup.selectAll('.anomaly-marker-line').data(markers, (d) => d.epoch_utc.getTime());
+    bottomMarkers.enter()
+        .append('line')
+        .attr('class', 'anomaly-marker-line')
+        .attr('stroke', '#ff4444')
+        .attr('stroke-dasharray', '4,3')
+        .attr('stroke-width', 1)
+        .merge(bottomMarkers)
+        .attr('x1', (d) => xScaleBottom(d.epoch_utc))
+        .attr('x2', (d) => xScaleBottom(d.epoch_utc))
+        .attr('y1', 0)
+        .attr('y2', bottomHeight);
+    bottomMarkers.exit().remove();
 }
 
 /**

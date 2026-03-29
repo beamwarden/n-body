@@ -23,7 +23,7 @@
         #cesium-container { flex: 1; height: 100%; }
         /* NF-022: minimum 14px for side panel text */
         #side-panel { width: 380px; display: flex; flex-direction: column; border-left: 1px solid #222; font-size: 14px; }
-        #residual-chart { flex: 1; padding: 8px; border-bottom: 1px solid #222; overflow: hidden; font-size: 14px; }
+        #residual-chart { flex: 1; padding: 8px; border-bottom: 1px solid #222; overflow: hidden; font-size: 14px; min-height: 160px; }
         #alert-panel { height: 240px; padding: 8px; overflow-y: auto; font-size: 14px; }
 
         /* Alert panel styles (F-055) */
@@ -92,6 +92,57 @@
         .conf-green  { color: #66ff66; }
         .conf-amber  { color: #ffaa00; }
         .conf-red    { color: #ff4444; }
+
+        /* Step 4: Chart hover tooltip */
+        .chart-tooltip {
+            position: absolute;
+            background: #1a1a2e;
+            border: 1px solid #444;
+            padding: 6px 10px;
+            font-size: 12px;
+            font-family: monospace;
+            color: #e0e0e0;
+            pointer-events: none;
+            z-index: 10;
+            border-radius: 3px;
+            white-space: nowrap;
+        }
+
+        /* Step 11: Enriched alert card metrics row */
+        .alert-metrics {
+            color: #888;
+            font-size: 11px;
+            margin-top: 2px;
+        }
+
+        /* Step 13: Object info panel */
+        #object-info-panel {
+            display: none;
+            background: #12121a;
+            border-bottom: 1px solid #222;
+            padding: 8px;
+            font-size: 13px;
+            font-family: monospace;
+            overflow: hidden;
+            min-height: 120px;
+            max-height: 160px;
+        }
+        #object-info-panel .info-title {
+            font-size: 13px;
+            font-weight: bold;
+            color: #aaa;
+            border-bottom: 1px solid #333;
+            padding-bottom: 3px;
+            margin-bottom: 4px;
+        }
+        #object-info-panel .info-row {
+            color: #ccc;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+        #object-info-panel .info-label {
+            color: #666;
+        }
     </style>
 </head>
 <body>
@@ -100,6 +151,7 @@
         <div id="cesium-container"></div>
         <div id="side-panel">
             <div id="residual-chart"></div>
+            <div id="object-info-panel"></div>
             <div id="alert-panel"></div>
         </div>
     </div>

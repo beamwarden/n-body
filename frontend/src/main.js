@@ -6,7 +6,7 @@
  */
 
 import { initGlobe, updateSatellitePosition, updateUncertaintyEllipsoid, highlightAnomaly, setupSelectionHandler } from './globe.js';
-import { initResidualChart, appendResidualDataPoint, selectObject } from './residuals.js';
+import { initResidualChart, appendResidualDataPoint, selectObject, addAnomalyMarker } from './residuals.js';
 import { initAlertPanel, addAlert, updateAlertStatus, seedFromCatalog as alertSeedFromCatalog } from './alerts.js';
 
 // ---------------------------------------------------------------------------
@@ -37,6 +37,20 @@ let backendBaseUrl = '';
  * @type {Map<number, string>}
  */
 const nameMap = new Map();
+
+/**
+ * Step 12: Latest state_update (or recalibration) message per NORAD ID.
+ * Used by the object info panel for O(1) access to current state without re-fetching.
+ * @type {Map<number, Object>}
+ */
+const latestStateMap = new Map();
+
+/**
+ * Step 17: Catalog entries map for object_class lookup.
+ * Populated from GET /catalog on connect/reconnect.
+ * @type {Map<number, Object>}
+ */
+const catalogMap = new Map();
 
 // Reconnection state
 let _reconnectDelay_s = 1;
@@ -92,11 +106,26 @@ export function routeMessage(message) {
         if (norad_id === selectedNoradId && chartState) {
             appendResidualDataPoint(chartState, message);
         }
+        // Step 12: Store latest state for info panel.
+        latestStateMap.set(norad_id, message);
+        // Step 10: Resolve any recalibrating alerts when filter returns to normal
+        // (anomaly_type === null confirms recalibration cycle is complete — F-034).
+        if (message.anomaly_type === null && panelState) {
+            _resolveRecalibratingAlerts(norad_id, message.epoch_utc);
+        }
 
     } else if (type === 'anomaly') {
         highlightAnomaly(viewer, norad_id, message.anomaly_type);
         if (panelState) {
-            addAlert(panelState, message, nameMap);
+            addAlert(panelState, message, nameMap, (clickedId) => {
+                selectedNoradId = clickedId;
+                if (chartState) selectObject(chartState, clickedId);
+                _showObjectInfoPanel(clickedId);
+            });
+        }
+        // Step 8: Add anomaly marker to residual chart at the anomaly epoch.
+        if (chartState) {
+            addAnomalyMarker(chartState, norad_id, message.epoch_utc, message.anomaly_type);
         }
         if (norad_id === selectedNoradId && chartState) {
             appendResidualDataPoint(chartState, message);
@@ -112,9 +141,12 @@ export function routeMessage(message) {
             message.eci_km,
             message.epoch_utc
         );
+        // Step 10: Transition to 'recalibrating' (not 'resolved') — true resolution
+        // is confirmed by the next state_update with anomaly_type === null.
         if (panelState) {
-            updateAlertStatus(panelState, norad_id, 'resolved', message.epoch_utc);
+            updateAlertStatus(panelState, norad_id, 'recalibrating', null);
         }
+        latestStateMap.set(norad_id, message);
     }
 }
 
@@ -189,6 +221,110 @@ function _scheduleReconnect(url) {
 }
 
 // ---------------------------------------------------------------------------
+// Steps 14, 17: Object info panel helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Escape HTML special characters to prevent XSS in innerHTML.
+ * Duplicated from alerts.js per plan recommendation (no shared util module).
+ * @param {string} str - Input string.
+ * @returns {string} HTML-escaped string.
+ */
+function _escapeHtml(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+/**
+ * Show or hide the object info panel for the given NORAD ID. (Step 14, F-056)
+ *
+ * Reads from latestStateMap (current ECI position/velocity/confidence) and
+ * catalogMap (object_class). If noradId is null, hides the panel.
+ *
+ * @param {number|null} noradId - NORAD catalog ID to display, or null to hide.
+ * @returns {void}
+ */
+function _showObjectInfoPanel(noradId) {
+    const panelEl = document.getElementById('object-info-panel');
+    if (!panelEl) return;
+
+    if (noradId === null) {
+        panelEl.style.display = 'none';
+        return;
+    }
+
+    const state = latestStateMap.get(noradId);
+    const objName = nameMap.get(noradId) || String(noradId);
+    const catalogEntry = catalogMap.get(noradId);
+    const objectClass = (catalogEntry && catalogEntry.object_class) ? catalogEntry.object_class : null;
+
+    const confScore = (state && state.confidence != null) ? state.confidence : null;
+    let confClass = 'conf-red';
+    let confPct = 'N/A';
+    if (confScore !== null) {
+        confPct = (confScore * 100).toFixed(1) + '%';
+        if (confScore > 0.85) confClass = 'conf-green';
+        else if (confScore >= 0.60) confClass = 'conf-amber';
+        else confClass = 'conf-red';
+    }
+
+    let posStr = 'N/A';
+    let velStr = 'N/A';
+    let epochStr = 'N/A';
+    if (state) {
+        if (state.eci_km && state.eci_km.length === 3) {
+            posStr = state.eci_km.map((v) => v.toFixed(2)).join(', ') + ' km';
+        }
+        if (state.eci_km_s && state.eci_km_s.length === 3) {
+            velStr = state.eci_km_s.map((v) => v.toFixed(4)).join(', ') + ' km/s';
+        }
+        if (state.epoch_utc) {
+            epochStr = String(state.epoch_utc).replace('T', ' ').substring(0, 19) + ' UTC';
+        }
+    }
+
+    let rows = `
+        <div class="info-row"><span class="info-label">NORAD ID: </span>${_escapeHtml(String(noradId))}</div>
+        <div class="info-row"><span class="info-label">Name: </span>${_escapeHtml(objName)}</div>`;
+    if (objectClass) {
+        rows += `<div class="info-row"><span class="info-label">Class: </span>${_escapeHtml(objectClass)}</div>`;
+    }
+    rows += `
+        <div class="info-row"><span class="info-label">ECI Pos: </span>${_escapeHtml(posStr)}</div>
+        <div class="info-row"><span class="info-label">ECI Vel: </span>${_escapeHtml(velStr)}</div>
+        <div class="info-row"><span class="info-label">Confidence: </span><span class="${confClass}">${_escapeHtml(confPct)}</span></div>
+        <div class="info-row"><span class="info-label">Updated: </span>${_escapeHtml(epochStr)}</div>`;
+
+    panelEl.innerHTML = `<div class="info-title">Object Info</div>${rows}`;
+    panelEl.style.display = 'block';
+}
+
+/**
+ * Resolve any 'recalibrating' alerts for a NORAD ID when the filter returns to normal.
+ * Called from routeMessage on state_update with anomaly_type === null. (Step 10, F-034)
+ *
+ * @param {number} noradId - NORAD catalog ID.
+ * @param {string} epochUtc - ISO-8601 UTC epoch of the resolving state_update.
+ * @returns {void}
+ */
+function _resolveRecalibratingAlerts(noradId, epochUtc) {
+    if (!panelState) return;
+    let hasRecalibrating = false;
+    for (const [, entry] of panelState.alerts) {
+        if (parseInt(entry.data.norad_id, 10) === noradId && entry.status === 'recalibrating') {
+            hasRecalibrating = true;
+            break;
+        }
+    }
+    if (hasRecalibrating) {
+        updateAlertStatus(panelState, noradId, 'resolved', epochUtc);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Step 26+27: Seed globe, charts, and name map from catalog data
 // ---------------------------------------------------------------------------
 
@@ -206,6 +342,14 @@ function _seedFromCatalog(catalog) {
     for (const entry of catalog) {
         if (entry.norad_id != null) {
             nameMap.set(entry.norad_id, entry.name || String(entry.norad_id));
+        }
+    }
+
+    // Step 17: Populate catalogMap for object_class lookup in info panel.
+    catalogMap.clear();
+    for (const entry of catalog) {
+        if (entry.norad_id != null) {
+            catalogMap.set(entry.norad_id, entry);
         }
     }
 
@@ -275,12 +419,14 @@ export async function initApp() {
     // 5. Initialize anomaly alert panel.
     panelState = initAlertPanel('alert-panel');
 
-    // 6. Wire globe click selection to residuals and alerts (F-056).
+    // 6. Wire globe click selection to residuals, alerts, and info panel (F-056).
+    // Step 15: _showObjectInfoPanel called here alongside selectObject.
     setupSelectionHandler(viewer, (noradId) => {
         selectedNoradId = noradId;
         if (chartState) {
             selectObject(chartState, noradId);
         }
+        _showObjectInfoPanel(noradId);
     });
 
     // 7. Fetch initial catalog; seed globe and name map; auto-select first object.

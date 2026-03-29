@@ -80,15 +80,19 @@ export function seedFromCatalog(panelState, catalog) {
  * Alert key: norad_id + '_' + epoch_utc (unique per detection event).
  * Newest alerts appear at the top. Panel is capped at MAX_ALERTS entries.
  *
+ * Step 9: Displays peak NIS and peak residual magnitude from the anomaly message.
+ * Step 16: Accepts optional onClickCallback(noradId) for alert card click wiring.
+ *
  * @param {Object} panelState - Panel state from initAlertPanel.
  * @param {Object} anomalyEvent - Anomaly message from backend WebSocket.
  * @param {Map<number, string>} [nameMapOverride] - Optional name map from main.js.
+ * @param {function(number): void|null} [onClickCallback] - Optional callback for card clicks.
  * @returns {void}
  */
-export function addAlert(panelState, anomalyEvent, nameMapOverride) {
+export function addAlert(panelState, anomalyEvent, nameMapOverride, onClickCallback = null) {
     if (!panelState) return;
 
-    const { norad_id, epoch_utc, anomaly_type } = anomalyEvent;
+    const { norad_id, epoch_utc, anomaly_type, nis, innovation_eci_km } = anomalyEvent;
     const key = `${norad_id}_${epoch_utc}`;
 
     // Avoid duplicate entries for the same event
@@ -101,6 +105,18 @@ export function addAlert(panelState, anomalyEvent, nameMapOverride) {
     // Format time: HH:MM:SS UTC
     const epochDate = new Date(epoch_utc);
     const timeStr = epochDate.toISOString().substring(11, 19) + ' UTC';
+
+    // Step 9: Compute peak residual magnitude from innovation position components [0:3].
+    let peakResidualStr = '';
+    if (Array.isArray(innovation_eci_km) && innovation_eci_km.length >= 3) {
+        const mag = Math.sqrt(
+            innovation_eci_km[0] ** 2 +
+            innovation_eci_km[1] ** 2 +
+            innovation_eci_km[2] ** 2
+        );
+        peakResidualStr = mag.toFixed(3) + ' km';
+    }
+    const peakNisStr = (nis != null) ? Number(nis).toFixed(2) : '';
 
     // Build alert item DOM element
     const alertEl = document.createElement('div');
@@ -123,11 +139,30 @@ export function addAlert(panelState, anomalyEvent, nameMapOverride) {
         ` <span style="color:#666;font-size:11px">${_escapeHtml(timeStr)}</span>`;
     alertEl.appendChild(infoLine);
 
+    // Step 9: Peak NIS and residual metrics row.
+    if (peakNisStr || peakResidualStr) {
+        const metricsEl = document.createElement('div');
+        metricsEl.className = 'alert-metrics';
+        const parts = [];
+        if (peakNisStr) parts.push(`Peak NIS: ${peakNisStr}`);
+        if (peakResidualStr) parts.push(`Peak residual: ${peakResidualStr}`);
+        metricsEl.textContent = parts.join('  \u00b7  ');
+        alertEl.appendChild(metricsEl);
+    }
+
     // Status indicator
     const statusEl = document.createElement('div');
     statusEl.className = 'alert-status active';
     statusEl.textContent = 'ACTIVE';
     alertEl.appendChild(statusEl);
+
+    // Step 16: Wire alert card click to object selection callback.
+    if (onClickCallback !== null) {
+        alertEl.style.cursor = 'pointer';
+        alertEl.addEventListener('click', () => {
+            onClickCallback(norad_id);
+        });
+    }
 
     // Prepend (newest on top)
     panelState.listEl.insertBefore(alertEl, panelState.listEl.firstChild);
@@ -203,6 +238,28 @@ export function updateAlertStatus(panelState, noradId, newStatus, resolutionTime
 
             // Dim the entry
             entry.el.style.opacity = '0.6';
+        }
+
+        // Step 10 risk mitigation: if stuck in 'recalibrating' for > 5 minutes,
+        // auto-resolve (handles objects that drop from catalog before next state_update).
+        if (newStatus === 'recalibrating') {
+            const capturedKey = key;
+            setTimeout(() => {
+                if (!panelState.alerts.has(capturedKey)) return;
+                const e = panelState.alerts.get(capturedKey);
+                if (e.status === 'recalibrating') {
+                    e.status = 'resolved';
+                    e.el.className = 'alert-item resolved';
+                    e.statusEl.className = 'alert-status resolved';
+                    e.statusEl.textContent = 'RESOLVED';
+                    const timeoutEl = document.createElement('div');
+                    timeoutEl.style.color = '#66cc66';
+                    timeoutEl.style.fontSize = '11px';
+                    timeoutEl.textContent = 'Resolved (timeout)';
+                    e.el.appendChild(timeoutEl);
+                    e.el.style.opacity = '0.6';
+                }
+            }, 5 * 60 * 1000); // 5-minute timeout
         }
     }
 }

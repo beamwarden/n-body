@@ -483,6 +483,7 @@ async def get_catalog() -> list[dict]:
             {
                 "norad_id": norad_id,
                 "name": name,
+                "object_class": entry.get("object_class", "unknown"),
                 "last_update_epoch_utc": last_update_epoch_utc,
                 "confidence": confidence,
                 "eci_km": eci_km,
