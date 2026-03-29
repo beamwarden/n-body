@@ -5,7 +5,7 @@
  * alerts modules.
  */
 
-import { initGlobe, updateSatellitePosition, updateUncertaintyEllipsoid, highlightAnomaly, setupSelectionHandler } from './globe.js';
+import { initGlobe, updateSatellitePosition, updateUncertaintyEllipsoid, highlightAnomaly, setupSelectionHandler, drawHistoricalTrack, drawPredictiveTrackWithCone, clearTrackAndCone } from './globe.js';
 import { initResidualChart, appendResidualDataPoint, selectObject, addAnomalyMarker } from './residuals.js';
 import { initAlertPanel, addAlert, updateAlertStatus, seedFromCatalog as alertSeedFromCatalog } from './alerts.js';
 
@@ -121,6 +121,9 @@ export function routeMessage(message) {
                 selectedNoradId = clickedId;
                 if (chartState) selectObject(chartState, clickedId);
                 _showObjectInfoPanel(clickedId);
+                _fetchAndDrawTrack(clickedId).catch((err) => {
+                    console.warn('[main] _fetchAndDrawTrack (alert click) error:', err);
+                });
             });
         }
         // Step 8: Add anomaly marker to residual chart at the anomaly epoch.
@@ -239,10 +242,150 @@ function _escapeHtml(str) {
 }
 
 /**
+ * Fetch anomaly history for a tracked object from GET /object/{norad_id}/anomalies.
+ * Returns the JSON array on success, or an empty array on error.
+ *
+ * Called by _showObjectInfoPanel after the static info is rendered, so
+ * a slow fetch does not block the core panel display.
+ *
+ * @param {string} baseUrl - Backend base URL (e.g., 'http://localhost:8000').
+ * @param {number} noradId - NORAD catalog ID.
+ * @returns {Promise<Array<Object>>} Anomaly event array, or [] on error.
+ */
+async function _fetchAnomalyHistory(baseUrl, noradId) {
+    try {
+        const response = await fetch(`${baseUrl}/object/${noradId}/anomalies`);
+        if (!response.ok) {
+            console.warn('[main] GET /object/' + noradId + '/anomalies returned', response.status);
+            return [];
+        }
+        return await response.json();
+    } catch (err) {
+        console.warn('[main] _fetchAnomalyHistory error:', err);
+        return [];
+    }
+}
+
+/**
+ * Render the anomaly history section and append it to the info panel.
+ * Called asynchronously after the static info rows are already displayed,
+ * so the panel is visible immediately without waiting for the fetch.
+ *
+ * @param {HTMLElement} panelEl - The #object-info-panel DOM element.
+ * @param {number} noradId - NORAD catalog ID being displayed.
+ * @returns {Promise<void>}
+ */
+async function _appendAnomalyHistorySection(panelEl, noradId) {
+    const events = await _fetchAnomalyHistory(backendBaseUrl, noradId);
+
+    // Guard: if the panel was replaced (user clicked away), do not append stale data.
+    if (!panelEl.isConnected || panelEl.style.display === 'none') return;
+    // Guard: check that the panel still shows the same NORAD ID.
+    if (selectedNoradId !== noradId) return;
+
+    const section = document.createElement('div');
+    section.className = 'anomaly-history-section';
+
+    const title = document.createElement('div');
+    title.className = 'anomaly-history-title';
+    title.textContent = 'Anomaly History';
+    section.appendChild(title);
+
+    if (events.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'anomaly-history-empty';
+        empty.textContent = 'No anomaly history';
+        section.appendChild(empty);
+    } else {
+        for (const ev of events) {
+            const entry = document.createElement('div');
+            entry.className = 'anomaly-history-entry';
+
+            // Anomaly type badge — reuses CSS class from alert panel.
+            const badge = document.createElement('span');
+            badge.className = 'alert-type-badge ' + _escapeHtml(ev.anomaly_type || '');
+            badge.textContent = (ev.anomaly_type || 'unknown').replace('_', ' ');
+
+            // Detection epoch formatted as YYYY-MM-DD HH:MM UTC.
+            const epochText = document.createTextNode(
+                ' ' + String(ev.detection_epoch_utc || '').replace('T', ' ').substring(0, 16) + ' UTC'
+            );
+
+            // NIS value.
+            const nisText = document.createTextNode(
+                ' NIS: ' + (ev.nis_value != null ? Number(ev.nis_value).toFixed(1) : 'N/A')
+            );
+
+            // Resolved/unresolved indicator.
+            const statusSpan = document.createElement('span');
+            if (ev.status === 'resolved' && ev.resolution_epoch_utc) {
+                statusSpan.className = 'anomaly-resolved';
+                const resolvedTime = String(ev.resolution_epoch_utc).replace('T', ' ').substring(0, 16);
+                const durText = ev.recalibration_duration_s != null
+                    ? ' (' + Math.round(ev.recalibration_duration_s) + 's)'
+                    : '';
+                statusSpan.textContent = ' resolved ' + resolvedTime + durText;
+            } else {
+                statusSpan.className = 'anomaly-unresolved';
+                statusSpan.textContent = ' ' + (ev.status || 'active');
+            }
+
+            entry.appendChild(badge);
+            entry.appendChild(epochText);
+            entry.appendChild(nisText);
+            entry.appendChild(document.createElement('br'));
+            entry.appendChild(statusSpan);
+            section.appendChild(entry);
+        }
+    }
+
+    panelEl.appendChild(section);
+}
+
+/**
+ * Fetch the track for a NORAD ID, then draw historical and forward tracks on the globe.
+ * Clears any existing track first. Called on object selection.
+ *
+ * @param {number} noradId - NORAD catalog ID.
+ * @returns {Promise<void>}
+ */
+async function _fetchAndDrawTrack(noradId) {
+    // Clear existing track immediately for instant visual feedback.
+    if (viewer) clearTrackAndCone(viewer);
+
+    try {
+        const url = `${backendBaseUrl}/object/${noradId}/track?seconds_back=1500&seconds_forward=1500`;
+        const response = await fetch(url);
+        if (!response.ok) {
+            console.warn('[main] GET track returned', response.status, 'for NORAD', noradId);
+            return;
+        }
+        const data = await response.json();
+
+        // Guard: if selection changed while fetching, discard stale track data.
+        if (selectedNoradId !== noradId) return;
+        if (!viewer) return;
+
+        if (data.backward_track && data.backward_track.length > 0) {
+            drawHistoricalTrack(viewer, data.backward_track);
+        }
+        if (data.forward_track && data.forward_track.length > 0) {
+            drawPredictiveTrackWithCone(viewer, data.forward_track);
+        }
+    } catch (err) {
+        console.warn('[main] _fetchAndDrawTrack error for NORAD', noradId, ':', err);
+    }
+}
+
+/**
  * Show or hide the object info panel for the given NORAD ID. (Step 14, F-056)
  *
  * Reads from latestStateMap (current ECI position/velocity/confidence) and
  * catalogMap (object_class). If noradId is null, hides the panel.
+ *
+ * The static info rows are rendered synchronously for immediate display.
+ * The anomaly history section is fetched async and appended when the
+ * response arrives, so the panel is never blocked by a slow fetch.
  *
  * @param {number|null} noradId - NORAD catalog ID to display, or null to hide.
  * @returns {void}
@@ -300,6 +443,12 @@ function _showObjectInfoPanel(noradId) {
 
     panelEl.innerHTML = `<div class="info-title">Object Info</div>${rows}`;
     panelEl.style.display = 'block';
+
+    // Append anomaly history async — panel is already visible with static info.
+    // _appendAnomalyHistorySection guards against stale data if selection changes.
+    _appendAnomalyHistorySection(panelEl, noradId).catch((err) => {
+        console.warn('[main] _appendAnomalyHistorySection error:', err);
+    });
 }
 
 /**
@@ -346,10 +495,26 @@ function _seedFromCatalog(catalog) {
     }
 
     // Step 17: Populate catalogMap for object_class lookup in info panel.
+    // Also seed latestStateMap with catalog data so the info panel shows
+    // name/class/state immediately on click, even before any WS messages arrive.
     catalogMap.clear();
     for (const entry of catalog) {
         if (entry.norad_id != null) {
             catalogMap.set(entry.norad_id, entry);
+            // Pre-populate latestStateMap from catalog so info panel works on
+            // first click regardless of whether trigger-process has been run.
+            if (!latestStateMap.has(entry.norad_id)) {
+                latestStateMap.set(entry.norad_id, {
+                    type: 'state_update',
+                    norad_id: entry.norad_id,
+                    epoch_utc: entry.last_update_epoch_utc ?? null,
+                    eci_km: entry.eci_km ?? null,
+                    eci_km_s: entry.eci_km_s ?? null,
+                    confidence: entry.confidence ?? null,
+                    nis: entry.nis ?? 0,
+                    anomaly_type: null,
+                });
+            }
         }
     }
 
@@ -427,6 +592,14 @@ export async function initApp() {
             selectObject(chartState, noradId);
         }
         _showObjectInfoPanel(noradId);
+        if (noradId !== null) {
+            _fetchAndDrawTrack(noradId).catch((err) => {
+                console.warn('[main] _fetchAndDrawTrack (globe click) error:', err);
+            });
+        } else {
+            // Selection cleared — remove track from globe.
+            if (viewer) clearTrackAndCone(viewer);
+        }
     });
 
     // 7. Fetch initial catalog; seed globe and name map; auto-select first object.

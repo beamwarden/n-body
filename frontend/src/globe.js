@@ -126,6 +126,10 @@ export function initGlobe(containerId, ionToken) {
         navigationHelpButton: false,
         infoBox: false,
         selectionIndicator: true,
+        // Use Ion default imagery (requires valid Ion token in CESIUM_ION_TOKEN env var).
+        // To use offline, set imageryProvider to a SingleTileImageryProvider with a
+        // local texture. For now, defer to Ion default for demo use.
+        // TD-026: add globe imagery selection to UI or config (post-POC).
     });
 
     // Set initial camera to full-Earth view
@@ -309,6 +313,159 @@ export function highlightAnomaly(viewer, noradId, anomalyType) {
             ellEntity.ellipsoid.material = Cesium.Color.CYAN.withAlpha(0.15);
         }
     }, 10000);
+}
+
+// ---------------------------------------------------------------------------
+// Track and uncertainty cone drawing (plan 2026-03-29-history-tracks-cones.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * Module-level reference to the current historical track entity, for cleanup.
+ * @type {Object|null}
+ */
+let _currentTrackEntity = null;
+
+/**
+ * Module-level reference to the current forward track entity, for cleanup.
+ * @type {Object|null}
+ */
+let _currentForwardTrackEntity = null;
+
+/**
+ * Module-level array of corridor segment entities for the uncertainty cone.
+ * Stored as an array because Option A creates multiple short corridor segments.
+ * @type {Array<Object>}
+ */
+let _currentConeEntities = [];
+
+/**
+ * Draw a historical ground track polyline on the globe for the selected object.
+ *
+ * Converts each ECI J2000 track point to ECEF Cartesian3 using the per-point
+ * epoch for correct GMST rotation. Adds a single cyan polyline entity.
+ *
+ * @param {Object} viewer - Cesium.Viewer instance.
+ * @param {Array<{epoch_utc: string, eci_km: Array<number>}>} trackPoints -
+ *   Historical track points from GET /object/{norad_id}/track backward_track.
+ * @returns {void}
+ */
+export function drawHistoricalTrack(viewer, trackPoints) {
+    if (!trackPoints || trackPoints.length === 0) return;
+
+    const positions = trackPoints.map((pt) =>
+        eciToEcefCartesian3(pt.eci_km, pt.epoch_utc)
+    );
+
+    _currentTrackEntity = viewer.entities.add({
+        id: 'track-historical',
+        polyline: {
+            positions: positions,
+            width: 2,
+            material: Cesium.Color.CYAN.withAlpha(0.6),
+            clampToGround: false,
+        },
+    });
+}
+
+/**
+ * Draw the predictive forward track and widening uncertainty corridor.
+ *
+ * Nominal forward track: orange dashed polyline.
+ * Uncertainty corridor: segmented corridors (Option A from plan decision 2).
+ *   Multiple short corridor segments with increasing width approximate the
+ *   widening cone. Each segment spans 5 forward points and uses the uncertainty
+ *   radius at its midpoint as the half-width.
+ *
+ * IMPLEMENTATION NOTE: Cesium.CorridorGraphics accepts a single scalar width,
+ * not a per-vertex width array. Option A (segmented corridors) is used here.
+ * Each segment has a constant width equal to twice the uncertainty_radius_km
+ * at the segment midpoint, converted to metres. This produces a stepped but
+ * clearly widening corridor visual, acceptable for the POC demo.
+ * See plan docs/plans/2026-03-29-history-tracks-cones.md step 2.3 for rationale.
+ *
+ * @param {Object} viewer - Cesium.Viewer instance.
+ * @param {Array<{epoch_utc: string, eci_km: Array<number>, uncertainty_radius_km: number}>} forwardTrackPoints -
+ *   Forward track points from GET /object/{norad_id}/track forward_track.
+ * @returns {void}
+ */
+export function drawPredictiveTrackWithCone(viewer, forwardTrackPoints) {
+    if (!forwardTrackPoints || forwardTrackPoints.length === 0) return;
+
+    const positions = forwardTrackPoints.map((pt) =>
+        eciToEcefCartesian3(pt.eci_km, pt.epoch_utc)
+    );
+
+    // Nominal forward track — orange dashed polyline.
+    _currentForwardTrackEntity = viewer.entities.add({
+        id: 'track-forward',
+        polyline: {
+            positions: positions,
+            width: 2,
+            material: new Cesium.PolylineDashMaterialProperty({
+                color: Cesium.Color.ORANGE.withAlpha(0.7),
+                dashLength: 16,
+            }),
+            clampToGround: false,
+        },
+    });
+
+    // Uncertainty corridor: Option A — segmented corridors (plan decision 2).
+    // Group forward points into segments of ~5 points each. Each segment gets
+    // a constant width = 2 * uncertainty_radius_km at the midpoint (in metres).
+    const SEGMENT_SIZE = 5;
+    const numSegments = Math.ceil(forwardTrackPoints.length / SEGMENT_SIZE);
+
+    for (let seg = 0; seg < numSegments; seg++) {
+        const startIdx = seg * SEGMENT_SIZE;
+        const endIdx = Math.min(startIdx + SEGMENT_SIZE + 1, forwardTrackPoints.length);
+        const segPositions = positions.slice(startIdx, endIdx);
+        if (segPositions.length < 2) continue;
+
+        // Use the midpoint of the segment for the width value.
+        // Apply a 10x display scale factor so the cone is visible at full-Earth
+        // zoom (~35,000 km altitude). Raw uncertainty radii (~30-100 km) are
+        // imperceptible at that scale without scaling. Clamp to [50, 2000] km.
+        const midIdx = Math.floor((startIdx + endIdx - 1) / 2);
+        const midPt = forwardTrackPoints[Math.min(midIdx, forwardTrackPoints.length - 1)];
+        const rawRadius_km = midPt.uncertainty_radius_km * 10;
+        const clampedRadius_km = Math.max(50, Math.min(2000, rawRadius_km));
+        const corridorWidth_m = clampedRadius_km * 2 * 1000;
+
+        const coneSegEntity = viewer.entities.add({
+            id: 'track-cone-seg-' + seg,
+            corridor: {
+                positions: segPositions,
+                width: corridorWidth_m,
+                material: Cesium.Color.ORANGE.withAlpha(0.3),
+                cornerType: Cesium.CornerType.ROUNDED,
+            },
+        });
+        _currentConeEntities.push(coneSegEntity);
+    }
+}
+
+/**
+ * Remove all track and uncertainty cone entities from the viewer.
+ *
+ * Removes entities whose IDs start with 'track-'. Resets module-level
+ * references to null/empty.
+ *
+ * @param {Object} viewer - Cesium.Viewer instance.
+ * @returns {void}
+ */
+export function clearTrackAndCone(viewer) {
+    if (_currentTrackEntity) {
+        viewer.entities.remove(_currentTrackEntity);
+        _currentTrackEntity = null;
+    }
+    if (_currentForwardTrackEntity) {
+        viewer.entities.remove(_currentForwardTrackEntity);
+        _currentForwardTrackEntity = null;
+    }
+    for (const entity of _currentConeEntities) {
+        viewer.entities.remove(entity);
+    }
+    _currentConeEntities = [];
 }
 
 // ---------------------------------------------------------------------------

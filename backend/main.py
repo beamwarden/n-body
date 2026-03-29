@@ -572,6 +572,247 @@ async def get_object_history(
     return result
 
 
+@app.get("/object/{norad_id}/anomalies")
+async def get_object_anomalies(norad_id: int) -> list[dict]:
+    """Return anomaly history for one tracked object.
+
+    Returns the 20 most recent anomaly events for the given NORAD ID, ordered
+    newest-first. Includes resolution epoch and recalibration duration so the
+    frontend can display resolved/unresolved status with timing.
+
+    This endpoint returns a superset of what GET /object/{norad_id}/history
+    returns: it includes resolution_epoch_utc and recalibration_duration_s,
+    which the history endpoint omits to preserve its existing contract.
+
+    Args:
+        norad_id: NORAD catalog ID.
+
+    Returns:
+        List of anomaly event dicts with keys: id, norad_id,
+        detection_epoch_utc, anomaly_type, nis_value,
+        resolution_epoch_utc (nullable), recalibration_duration_s (nullable),
+        status.
+
+    Raises:
+        HTTPException 404 if norad_id is not in the catalog.
+    """
+    # Validate norad_id is in catalog (same pattern as get_object_history).
+    catalog_ids = {int(e["norad_id"]) for e in app.state.catalog_entries}
+    if norad_id not in catalog_ids:
+        raise HTTPException(
+            status_code=404,
+            detail=f"NORAD ID {norad_id} not found in catalog.",
+        )
+
+    db: sqlite3.Connection = app.state.db
+
+    cursor = db.execute(
+        """
+        SELECT
+            id,
+            norad_id,
+            detection_epoch_utc,
+            anomaly_type,
+            nis_value,
+            resolution_epoch_utc,
+            recalibration_duration_s,
+            status
+        FROM alerts
+        WHERE norad_id = ?
+        ORDER BY detection_epoch_utc DESC
+        LIMIT 20
+        """,
+        (norad_id,),
+    )
+
+    rows = cursor.fetchall()
+    result: list[dict] = []
+    for row in rows:
+        (
+            row_id,
+            row_norad_id,
+            detection_epoch_utc,
+            anomaly_type,
+            nis_value,
+            resolution_epoch_utc,
+            recalibration_duration_s,
+            status,
+        ) = row
+        result.append(
+            {
+                "id": row_id,
+                "norad_id": row_norad_id,
+                "detection_epoch_utc": detection_epoch_utc,
+                "anomaly_type": anomaly_type,
+                "nis_value": nis_value,
+                "resolution_epoch_utc": resolution_epoch_utc,
+                "recalibration_duration_s": recalibration_duration_s,
+                "status": status,
+            }
+        )
+
+    return result
+
+
+@app.get("/object/{norad_id}/track")
+async def get_object_track(
+    norad_id: int,
+    seconds_back: int = 1500,
+    seconds_forward: int = 0,
+    # DEVIATION from plan docs/plans/2026-03-29-history-tracks-cones.md step 2.1:
+    # Plan decision 1 sets default step_s = 60 (not 30). Implemented as 60 here.
+    # Tech debt entry TD-025 added for UI configurability (post-POC).
+    step_s: int = 60,
+) -> dict:
+    """Return historical and predictive track points for one tracked object.
+
+    Back-propagates and forward-propagates the latest cached TLE using SGP4
+    to generate track points. Each point is in ECI J2000 km. The frontend
+    converts to ECEF Cartesian3 using eciToEcefCartesian3() with the per-point
+    epoch for correct GMST rotation.
+
+    Forward track points include uncertainty_radius_km derived from filter
+    covariance growth. If no filter state exists for the object, a default
+    linear growth model is used (1 km + 0.5 km per 300s).
+
+    Coordinate frame: ECI J2000 (GCRS). Same frame as all internal state vectors.
+    Conversion to ECEF happens only in the frontend (globe.js), consistent with
+    architecture section 3.2.
+
+    Performance note: 100 SGP4 propagations + astropy TEME->GCRS transforms
+    may take 500ms-1s. This is acceptable for user-initiated click actions.
+    See plan docs/plans/2026-03-29-history-tracks-cones.md section 2.1 for
+    discussion.
+
+    Args:
+        norad_id: NORAD catalog ID.
+        seconds_back: Seconds into the past to back-propagate (default 1500).
+        seconds_forward: Seconds into the future to forward-propagate (default 0).
+        step_s: Time step between track points in seconds (default 60).
+
+    Returns:
+        Dict with: norad_id, reference_epoch_utc, step_s,
+        backward_track (list of {epoch_utc, eci_km}),
+        forward_track (list of {epoch_utc, eci_km, uncertainty_radius_km}).
+
+    Raises:
+        HTTPException 404 if norad_id is not in catalog or no TLE is cached.
+    """
+    # Validate norad_id is in catalog.
+    catalog_ids = {int(e["norad_id"]) for e in app.state.catalog_entries}
+    if norad_id not in catalog_ids:
+        raise HTTPException(
+            status_code=404,
+            detail=f"NORAD ID {norad_id} not found in catalog.",
+        )
+
+    db: sqlite3.Connection = app.state.db
+
+    # Retrieve latest cached TLE. Returns 404 if none.
+    tle_record: Optional[dict] = ingest.get_latest_tle(db, norad_id)
+    if tle_record is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No cached TLE for NORAD ID {norad_id}.",
+        )
+
+    tle_line1: str = tle_record["tle_line1"]
+    tle_line2: str = tle_record["tle_line2"]
+
+    # Determine reference epoch: prefer filter last_epoch_utc; fall back to TLE epoch.
+    filter_states: dict[int, dict] = app.state.filter_states
+    filter_state: Optional[dict] = filter_states.get(norad_id)
+
+    if filter_state is not None:
+        reference_epoch_utc: datetime.datetime = filter_state["last_epoch_utc"]
+    else:
+        reference_epoch_utc = propagator.tle_epoch_utc(tle_line1)
+
+    # --- Backward track ---
+    # Range: from -seconds_back up to (not including) 0, step step_s, then t=0.
+    backward_offsets = list(range(-seconds_back, 0, step_s)) + [0]
+    backward_track: list[dict] = []
+    for t_s in backward_offsets:
+        point_epoch = reference_epoch_utc + datetime.timedelta(seconds=t_s)
+        try:
+            position_eci_km, _ = propagator.propagate_tle(tle_line1, tle_line2, point_epoch)
+            backward_track.append(
+                {
+                    "epoch_utc": point_epoch.isoformat(),
+                    "eci_km": position_eci_km.tolist(),
+                }
+            )
+        except ValueError as exc:
+            logger.warning(
+                "Track back-propagation failed for NORAD %d at t=%+d s: %s",
+                norad_id, t_s, exc,
+            )
+            continue
+
+    # --- Forward track ---
+    # Range: step_s, 2*step_s, ..., seconds_forward (inclusive if divisible).
+    forward_track: list[dict] = []
+    if seconds_forward > 0:
+        # Nominal update interval (seconds) used as the Q calibration reference.
+        # Q was tuned assuming a 30-minute (1800s) update cycle.
+        dt_nominal_s: float = 1800.0
+
+        # Extract covariance and process noise from filter state (if available).
+        if filter_state is not None:
+            cov_km2: np.ndarray = filter_state["covariance_km2"]
+            q_matrix: np.ndarray = filter_state["q_matrix"]
+            has_filter: bool = True
+        else:
+            has_filter = False
+
+        forward_offsets = range(step_s, seconds_forward + step_s, step_s)
+        for t_s in forward_offsets:
+            if t_s > seconds_forward:
+                break
+            point_epoch = reference_epoch_utc + datetime.timedelta(seconds=t_s)
+            try:
+                position_eci_km, _ = propagator.propagate_tle(tle_line1, tle_line2, point_epoch)
+            except ValueError as exc:
+                logger.warning(
+                    "Track forward-propagation failed for NORAD %d at t=+%d s: %s",
+                    norad_id, t_s, exc,
+                )
+                continue
+
+            # Compute uncertainty radius at this forward time step.
+            if has_filter:
+                # Covariance growth: P_ii + Q_ii * (t / dt_nominal).
+                # Linear approximation of unmodeled acceleration variance accumulation.
+                # See plan docs/plans/2026-03-29-history-tracks-cones.md step 3.1.
+                sigma2_grown = [
+                    float(cov_km2[i, i]) + float(q_matrix[i, i]) * (t_s / dt_nominal_s)
+                    for i in range(3)
+                ]
+                # 3-sigma radius from maximum position axis variance.
+                # Clamped: minimum 1 km (visibility), maximum 500 km (prevent artifacts).
+                radius_km: float = float(3.0 * np.sqrt(max(sigma2_grown)))
+                radius_km = float(np.clip(radius_km, 1.0, 500.0))
+            else:
+                # Default growth: 1 km base + 0.5 km per 300 s (no filter state).
+                radius_km = float(np.clip(1.0 + 0.5 * (t_s / 300.0), 1.0, 500.0))
+
+            forward_track.append(
+                {
+                    "epoch_utc": point_epoch.isoformat(),
+                    "eci_km": position_eci_km.tolist(),
+                    "uncertainty_radius_km": radius_km,
+                }
+            )
+
+    return {
+        "norad_id": norad_id,
+        "reference_epoch_utc": reference_epoch_utc.isoformat(),
+        "step_s": step_s,
+        "backward_track": backward_track,
+        "forward_track": forward_track,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Admin endpoint: manual processing trigger (NF-023, seed_maneuver.py support)
 # ---------------------------------------------------------------------------

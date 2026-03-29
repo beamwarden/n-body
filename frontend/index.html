@@ -23,8 +23,8 @@
         #cesium-container { flex: 1; height: 100%; }
         /* NF-022: minimum 14px for side panel text */
         #side-panel { width: 380px; display: flex; flex-direction: column; border-left: 1px solid #222; font-size: 14px; }
-        #residual-chart { flex: 1; padding: 8px; border-bottom: 1px solid #222; overflow: hidden; font-size: 14px; min-height: 160px; }
-        #alert-panel { height: 240px; padding: 8px; overflow-y: auto; font-size: 14px; }
+        #residual-chart { flex: 1; padding: 8px; overflow: hidden; font-size: 14px; min-height: 160px; }
+        #alert-panel { height: 240px; padding: 8px; overflow-y: auto; font-size: 14px; border-bottom: 1px solid #222; }
 
         /* Alert panel styles (F-055) */
         .alert-header {
@@ -115,17 +115,22 @@
             margin-top: 2px;
         }
 
-        /* Step 13: Object info panel */
+        /* Step 13: Object info panel — fixed to viewport upper-left so Cesium's
+           stacking context does not clip it. */
         #object-info-panel {
             display: none;
-            background: #12121a;
-            border-bottom: 1px solid #222;
-            padding: 8px;
+            position: fixed;
+            top: 48px; /* below the header */
+            left: 12px;
+            width: 280px;
+            background: #12121aee;
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 10px 12px;
             font-size: 13px;
             font-family: monospace;
             overflow: hidden;
-            min-height: 120px;
-            max-height: 160px;
+            z-index: 100;
         }
         #object-info-panel .info-title {
             font-size: 13px;
@@ -143,16 +148,53 @@
         #object-info-panel .info-label {
             color: #666;
         }
+
+        /* Anomaly history section within #object-info-panel (plan step 1.2) */
+        .anomaly-history-section {
+            max-height: 180px;
+            overflow-y: auto;
+            border-top: 1px solid #333;
+            margin-top: 6px;
+            padding-top: 6px;
+        }
+        .anomaly-history-title {
+            font-size: 11px;
+            font-weight: bold;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-bottom: 4px;
+        }
+        .anomaly-history-entry {
+            font-size: 11px;
+            line-height: 1.5;
+            padding: 3px 0;
+            border-bottom: 1px solid #222;
+        }
+        .anomaly-history-entry:last-child {
+            border-bottom: none;
+        }
+        .anomaly-resolved {
+            color: #66cc66;
+        }
+        .anomaly-unresolved {
+            color: #ff6666;
+        }
+        .anomaly-history-empty {
+            font-size: 11px;
+            color: #555;
+            padding: 4px 0;
+        }
     </style>
 </head>
 <body>
     <div id="header">n-body SSA Platform — Continuous Monitoring &amp; Prediction</div>
+    <div id="object-info-panel"></div>
     <div id="main-layout">
         <div id="cesium-container"></div>
         <div id="side-panel">
-            <div id="residual-chart"></div>
-            <div id="object-info-panel"></div>
             <div id="alert-panel"></div>
+            <div id="residual-chart"></div>
         </div>
     </div>
 

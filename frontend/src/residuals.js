@@ -348,7 +348,7 @@ function _redrawChart(chartState, noradId) {
         xScaleTop, yScaleTop, xScaleBottom, yScaleBottom,
         xAxisTopG, yAxisTopG, xAxisBottomG, yAxisBottomG,
         lineResidualPath, lineNisPath, areaBand, nisThresholdLine,
-        topDotsG, bottomDotsG,
+        topDotsG, bottomDotsG, topGroup, bottomGroup,
         innerWidth, topHeight, bottomHeight,
         tooltipEl, containerEl,
     } = chartState;

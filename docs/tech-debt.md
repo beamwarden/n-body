@@ -374,6 +374,22 @@ the requirement or architecture section they relate to.
 
 ---
 
+### TD-025: Track endpoint step_s is not user-configurable via UI (post-POC)
+- **Priority:** P3
+- **Source:** `docs/plans/2026-03-29-history-tracks-cones.md` Decision 1
+- **Relates to:** F-041 (history endpoint), F-050 (3D globe visualization)
+- **Description:** The `GET /object/{norad_id}/track` endpoint accepts `step_s` as a query
+  parameter, but the frontend always requests with the hard-coded default (60 s). Operators
+  cannot adjust the track density without modifying source code. For high-inclination or
+  rapidly maneuvering objects, finer steps (e.g., 30 s) would improve track accuracy; for
+  routine monitoring, coarser steps (e.g., 120 s) would reduce latency.
+- **Resolution path:** Add a small UI control (slider or dropdown: 30 / 60 / 120 s) in the
+  object info panel or a settings overlay. Pass the selected value as the `step_s` query
+  parameter when calling `_fetchAndDrawTrack()`. Store the preference in `localStorage`.
+- **Status:** Open
+
+---
+
 ### TD-023: scripts/replay.py and scripts/seed_maneuver.py are not implemented
 - **Priority:** P1
 - **Source:** `scripts/replay.py` line 21; `scripts/seed_maneuver.py` line 29
