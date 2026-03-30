@@ -741,9 +741,10 @@ def main() -> None:
     parser.add_argument(
         "--delta-v",
         type=float,
-        default=0.5,
+        default=5.0,
         metavar="MAGNITUDE_MS",
-        help="Delta-V magnitude in m/s (default: 0.5)",
+        help="Delta-V magnitude in m/s (default: 5.0). Values below ~3.0 m/s "
+             "may not cross the NIS=12.592 anomaly threshold with DEFAULT_R=900.",
     )
     parser.add_argument(
         "--direction",
