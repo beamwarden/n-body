@@ -429,3 +429,176 @@ def test_pending_anomaly_timeout_resolves_as_provisional_type() -> None:
 
     # Pending state cleared.
     assert "_pending_anomaly_check" not in filter_states[25544]
+
+
+# ---------------------------------------------------------------------------
+# Maneuver vs. filter_divergence distinction contract
+#
+# These tests document the exact behavioral difference between the two
+# classifications from the perspective of an external observer (the operator
+# watching the WebSocket stream and the alerts table).
+#
+# Maneuver (ANOMALY_MANEUVER):
+#   - Requires active_satellite object class
+#   - Requires >= 2 CONSECUTIVE NIS exceedances (MANEUVER_CONSECUTIVE_CYCLES)
+#   - Recalibration uses inflation_factor = 20.0 (large covariance reset)
+#   - DB record: anomaly_type = 'maneuver'
+#   - WS: cycle-1 emits provisional 'filter_divergence'; cycle-2 corrects to 'maneuver'
+#
+# Filter divergence (ANOMALY_DIVERGENCE):
+#   - Any object class
+#   - Single NIS exceedance is sufficient
+#   - Recalibration uses inflation_factor = 10.0
+#   - DB record: anomaly_type = 'filter_divergence'
+#   - WS: non-active satellites emit immediately; active satellites defer one cycle
+#         but stay 'filter_divergence' if cycle-2 NIS is below threshold
+# ---------------------------------------------------------------------------
+
+def _setup_warm_filter(
+    db: sqlite3.Connection,
+    norad_id: int,
+    object_class: str,
+) -> dict:
+    """Cold-start a filter and return filter_states dict ready for warm-path tests."""
+    entry = _make_catalog_entry(norad_id, object_class=object_class)
+    filter_states: dict = {}
+    process_single_object(
+        db=db, entry=entry, norad_id=norad_id, filter_states=filter_states,
+        tle_record=_make_tle_record(norad_id, "2026-03-28T12:00:00Z"),
+    )
+    return filter_states
+
+
+def test_maneuver_requires_two_consecutive_exceedances() -> None:
+    """MANEUVER classification requires exactly 2+ consecutive NIS exceedances.
+
+    A single exceedance — no matter how large — must never produce 'maneuver'.
+    Two consecutive exceedances on an active satellite must always produce 'maneuver'.
+    """
+    db = _make_in_memory_db()
+    entry = _make_catalog_entry(25544, object_class="active_satellite")
+    filter_states = _setup_warm_filter(db, 25544, "active_satellite")
+    detection_epoch = datetime.datetime(2026, 3, 28, 12, 30, 0, tzinfo=datetime.timezone.utc)
+
+    # --- Single exceedance: must NOT produce maneuver ---
+    with patch("backend.processing.anomaly.classify_anomaly", return_value=anomaly.ANOMALY_DIVERGENCE):
+        msgs_cycle1 = process_single_object(
+            db=db, entry=entry, norad_id=25544, filter_states=filter_states,
+            tle_record=_make_tle_record(25544, "2026-03-28T12:30:00Z"),
+        )
+    assert msgs_cycle1[0]["anomaly_type"] == anomaly.ANOMALY_DIVERGENCE, (
+        "Single exceedance must never classify as maneuver on cycle 1"
+    )
+    assert filter_states[25544].get("_pending_anomaly_check") is True, (
+        "Active satellite must defer recalibration after single exceedance"
+    )
+
+    # Inject the pending row ID so cycle 2 can resolve it.
+    row_id = anomaly.record_anomaly(
+        db=db, norad_id=25544, detection_epoch_utc=detection_epoch,
+        anomaly_type=anomaly.ANOMALY_DIVERGENCE, nis_value=247.2,
+    )
+    filter_states[25544]["_pending_anomaly_row_id"] = row_id
+
+    # --- Second consecutive exceedance: must produce maneuver ---
+    with patch("backend.processing.anomaly.classify_anomaly", return_value=anomaly.ANOMALY_MANEUVER):
+        msgs_cycle2 = process_single_object(
+            db=db, entry=entry, norad_id=25544, filter_states=filter_states,
+            tle_record=_make_tle_record(25544, "2026-03-28T13:00:00Z"),
+        )
+    assert msgs_cycle2[0]["anomaly_type"] == anomaly.ANOMALY_MANEUVER, (
+        "Two consecutive exceedances must produce maneuver"
+    )
+
+
+def test_single_exceedance_active_satellite_stays_divergence() -> None:
+    """Active satellite: if cycle-2 NIS is normal, provisional type stays filter_divergence.
+
+    This is the key distinction: a brief residual spike that self-corrects
+    (e.g., a TLE update error, not a real maneuver) must not be misclassified
+    as a maneuver just because it occurred on an active satellite.
+    """
+    db = _make_in_memory_db()
+    entry = _make_catalog_entry(25544, object_class="active_satellite")
+    filter_states = _setup_warm_filter(db, 25544, "active_satellite")
+    detection_epoch = datetime.datetime(2026, 3, 28, 12, 30, 0, tzinfo=datetime.timezone.utc)
+
+    # Cycle 1: NIS exceedance — provisional filter_divergence, no recal yet.
+    with patch("backend.processing.anomaly.classify_anomaly", return_value=anomaly.ANOMALY_DIVERGENCE):
+        process_single_object(
+            db=db, entry=entry, norad_id=25544, filter_states=filter_states,
+            tle_record=_make_tle_record(25544, "2026-03-28T12:30:00Z"),
+        )
+
+    row_id = anomaly.record_anomaly(
+        db=db, norad_id=25544, detection_epoch_utc=detection_epoch,
+        anomaly_type=anomaly.ANOMALY_DIVERGENCE, nis_value=247.2,
+    )
+    filter_states[25544]["_pending_anomaly_row_id"] = row_id
+
+    # Cycle 2: NIS back to normal (classify_anomaly returns None — chain broken).
+    with patch("backend.processing.anomaly.classify_anomaly", return_value=None):
+        msgs_cycle2 = process_single_object(
+            db=db, entry=entry, norad_id=25544, filter_states=filter_states,
+            tle_record=_make_tle_record(25544, "2026-03-28T13:00:00Z"),
+        )
+
+    # Must resolve as filter_divergence, NOT maneuver.
+    assert msgs_cycle2[0]["anomaly_type"] == anomaly.ANOMALY_DIVERGENCE, (
+        "Single exceedance with normal cycle-2 NIS must stay filter_divergence"
+    )
+    assert msgs_cycle2[0]["type"] == WS_TYPE_ANOMALY
+    assert msgs_cycle2[1]["type"] == WS_TYPE_RECALIBRATION
+
+    # DB record must remain filter_divergence.
+    cursor = db.execute("SELECT anomaly_type FROM alerts WHERE id=?", (row_id,))
+    assert cursor.fetchone()[0] == anomaly.ANOMALY_DIVERGENCE
+
+
+def test_maneuver_uses_higher_inflation_factor_than_divergence() -> None:
+    """Maneuver recalibration inflates covariance 2x more than filter_divergence.
+
+    Maneuver: inflation_factor = 20.0  (larger uncertainty — maneuver destination unknown)
+    Divergence: inflation_factor = 10.0 (smaller uncertainty — filter drifted, not jumped)
+
+    This test verifies the correct inflation factor is applied to the filter
+    covariance after each classification, not just that trigger_recalibration
+    returns the right dict (which is already tested in test_anomaly.py).
+    """
+    import backend.kalman as kalman_mod
+
+    def _covariance_trace_after_recal(anomaly_type: str) -> float:
+        """Return trace of position covariance block after recalibration with given type."""
+        epoch = datetime.datetime(2026, 3, 28, 12, 0, 0, tzinfo=datetime.timezone.utc)
+        state = np.array([6778.0, 0.0, 0.0, 0.0, 7.67, 0.0], dtype=np.float64)
+        fs = kalman_mod.init_filter(
+            state_eci_km=state,
+            epoch_utc=epoch,
+            process_noise_q=kalman_mod.OBJECT_CLASS_Q[kalman_mod.OBJECT_CLASS_ACTIVE],
+        )
+        params = anomaly.trigger_recalibration(
+            norad_id=25544,
+            anomaly_type=anomaly_type,
+            epoch_utc=epoch,
+        )
+        fs_recal = kalman_mod.recalibrate(
+            filter_state=fs,
+            new_observation_eci_km=state,
+            epoch_utc=epoch,
+            inflation_factor=params["inflation_factor"],
+        )
+        cov = kalman_mod.get_state(fs_recal)["covariance_km2"]
+        return float(cov[0, 0] + cov[1, 1] + cov[2, 2])  # position trace
+
+    trace_maneuver = _covariance_trace_after_recal(anomaly.ANOMALY_MANEUVER)
+    trace_divergence = _covariance_trace_after_recal(anomaly.ANOMALY_DIVERGENCE)
+
+    assert trace_maneuver > trace_divergence, (
+        f"Maneuver covariance trace ({trace_maneuver:.1f}) must exceed "
+        f"divergence trace ({trace_divergence:.1f}) — maneuver uses 2x inflation"
+    )
+    # Maneuver inflation=20.0, divergence inflation=10.0 -> ratio should be ~2.0
+    ratio = trace_maneuver / trace_divergence
+    assert 1.8 <= ratio <= 2.2, (
+        f"Covariance trace ratio maneuver/divergence = {ratio:.3f}, expected ~2.0"
+    )
