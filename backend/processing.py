@@ -28,6 +28,15 @@ WS_TYPE_STATE_UPDATE: str = "state_update"
 WS_TYPE_ANOMALY: str = "anomaly"
 WS_TYPE_RECALIBRATION: str = "recalibration"
 
+# Timeout for deferred recalibration on active satellites.  If no second TLE
+# arrives within this window (e.g., Space-Track outage), the pending
+# classification is resolved using the provisional type and recalibration
+# proceeds.  Configurable via NBODY_PENDING_ANOMALY_TIMEOUT_HOURS env var.
+import os as _os
+_PENDING_ANOMALY_TIMEOUT_HOURS: float = float(
+    _os.environ.get("NBODY_PENDING_ANOMALY_TIMEOUT_HOURS", "2.0")
+)
+
 
 def _ensure_state_history_table(db: sqlite3.Connection) -> None:
     """Create the state_history table and index if they do not already exist.
@@ -310,8 +319,127 @@ def process_single_object(
 
     messages: list[dict] = []
 
+    # --- Deferred classification resolution (cycle 2 for active satellites) ---
+    #
+    # On the previous cycle an anomaly was detected on an active satellite and
+    # recalibration was deferred so that a second consecutive NIS exceedance
+    # could confirm a maneuver classification.  Resolve that pending state now.
+    if filter_state.get("_pending_anomaly_check"):
+        pending_row_id: int = filter_state["_pending_anomaly_row_id"]
+        pending_type: str = filter_state["_pending_anomaly_type"]
+        pending_nis: float = filter_state["_pending_anomaly_nis"]
+        pending_innovation: list = filter_state["_pending_anomaly_innovation"]
+        pending_epoch: datetime.datetime = filter_state["_pending_anomaly_epoch_utc"]
+        pending_timeout: datetime.datetime = filter_state["_pending_anomaly_timeout_utc"]
+
+        # Determine final classification.
+        timed_out: bool = epoch_utc >= pending_timeout
+        if timed_out:
+            # Space-Track outage or long gap — keep provisional type.
+            final_type: str = pending_type
+            logger.warning(
+                "NORAD %d: pending anomaly timed out after %.1f h — resolving as %s",
+                norad_id,
+                _PENDING_ANOMALY_TIMEOUT_HOURS,
+                pending_type,
+            )
+        else:
+            # Re-run classifier against updated nis_history (now has cycle 2 NIS).
+            reclassified: Optional[str] = anomaly.classify_anomaly(
+                norad_id=norad_id,
+                nis_history=nis_history,
+                innovation_eci_km=innovation_eci_km_list,
+                is_active_satellite=True,
+            )
+            # If classifier returns None (cycle 2 NIS below threshold) the
+            # maneuver signal dissipated — keep the provisional type.
+            final_type = reclassified if reclassified is not None else pending_type
+
+        # Retroactively correct the DB record if the type changed.
+        if final_type != pending_type:
+            try:
+                anomaly.update_anomaly_type(db, pending_row_id, final_type)
+                logger.info(
+                    "NORAD %d: provisional %s upgraded to %s (row_id=%d)",
+                    norad_id,
+                    pending_type,
+                    final_type,
+                    pending_row_id,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    "NORAD %d: failed to update anomaly type: %s",
+                    norad_id,
+                    exc,
+                )
+
+        # Clear pending state before recalibrate() so keys are not carried forward.
+        for _k in (
+            "_pending_anomaly_check",
+            "_pending_anomaly_row_id",
+            "_pending_anomaly_type",
+            "_pending_anomaly_nis",
+            "_pending_anomaly_innovation",
+            "_pending_anomaly_epoch_utc",
+            "_pending_anomaly_timeout_utc",
+        ):
+            filter_state.pop(_k, None)
+
+        recal_params: dict = anomaly.trigger_recalibration(
+            norad_id=norad_id,
+            anomaly_type=final_type,
+            epoch_utc=pending_epoch,
+        )
+        filter_state = kalman.recalibrate(
+            filter_state=filter_state,
+            new_observation_eci_km=observation_eci_km,
+            epoch_utc=epoch_utc,
+            inflation_factor=recal_params["inflation_factor"],
+        )
+        filter_state["last_tle_line1"] = tle_line1
+        filter_state["last_tle_line2"] = tle_line2
+        filter_states[norad_id] = filter_state
+
+        # Track this anomaly row for recalibration-complete detection.
+        filter_state["_anomaly_row_id"] = pending_row_id
+        filter_state["_anomaly_detection_epoch_utc"] = pending_epoch
+
+        # Anomaly WS message: use cycle-1 NIS/innovation (the actual detection).
+        anomaly_ws_message = _build_ws_message(
+            norad_id=norad_id,
+            filter_state=filter_state,
+            message_type=WS_TYPE_ANOMALY,
+            anomaly_type=final_type,
+        )
+        anomaly_ws_message["nis"] = pending_nis
+        anomaly_ws_message["innovation_eci_km"] = pending_innovation
+
+        recal_ws_message = _build_ws_message(
+            norad_id=norad_id,
+            filter_state=filter_state,
+            message_type=WS_TYPE_RECALIBRATION,
+            anomaly_type=final_type,
+        )
+
+        _insert_state_history_row(
+            db=db,
+            norad_id=norad_id,
+            epoch_utc=pending_epoch,
+            state_eci_km=anomaly_ws_message["eci_km"] + anomaly_ws_message["eci_km_s"],
+            covariance_km2=anomaly_ws_message["covariance_diagonal_km2"],
+            nis=pending_nis,
+            confidence=anomaly_ws_message["confidence"],
+            anomaly_type=final_type,
+            message_type=WS_TYPE_ANOMALY,
+        )
+
+        messages.append(anomaly_ws_message)
+        messages.append(recal_ws_message)
+        return messages
+
+    # --- First-cycle anomaly detection ---
+
     if detected_anomaly_type is not None:
-        # Record anomaly, trigger recalibration, recalibrate filter.
         anomaly_row_id: int = anomaly.record_anomaly(
             db=db,
             norad_id=norad_id,
@@ -320,62 +448,97 @@ def process_single_object(
             nis_value=nis_val,
         )
 
-        recal_params: dict = anomaly.trigger_recalibration(
-            norad_id=norad_id,
-            anomaly_type=detected_anomaly_type,
-            epoch_utc=epoch_utc,
-        )
+        if is_active_satellite:
+            # Defer recalibration for active satellites so the next cycle can
+            # confirm whether this is a maneuver (2+ consecutive NIS exceedances)
+            # or a transient divergence.  No recalibrate() call here.
+            filter_state["_pending_anomaly_check"] = True
+            filter_state["_pending_anomaly_row_id"] = anomaly_row_id
+            filter_state["_pending_anomaly_type"] = detected_anomaly_type
+            filter_state["_pending_anomaly_nis"] = nis_val
+            filter_state["_pending_anomaly_innovation"] = innovation_eci_km_list
+            filter_state["_pending_anomaly_epoch_utc"] = epoch_utc
+            filter_state["_pending_anomaly_timeout_utc"] = epoch_utc + datetime.timedelta(
+                hours=_PENDING_ANOMALY_TIMEOUT_HOURS
+            )
+            filter_states[norad_id] = filter_state
 
-        filter_state = kalman.recalibrate(
-            filter_state=filter_state,
-            new_observation_eci_km=observation_eci_km,
-            epoch_utc=epoch_utc,
-            inflation_factor=recal_params["inflation_factor"],
-        )
-        # Preserve TLE lines so the next predict step uses the current TLE
-        # as the prior (not the new observation TLE, which would give zero innovation).
-        filter_state["last_tle_line1"] = tle_line1
-        filter_state["last_tle_line2"] = tle_line2
-        filter_states[norad_id] = filter_state
+            # Emit provisional anomaly message.  No recalibration message yet.
+            anomaly_ws_message = _build_ws_message(
+                norad_id=norad_id,
+                filter_state=filter_state,
+                message_type=WS_TYPE_ANOMALY,
+                anomaly_type=detected_anomaly_type,
+            )
+            anomaly_ws_message["nis"] = nis_val
+            anomaly_ws_message["innovation_eci_km"] = innovation_eci_km_list
 
-        # Store the anomaly row ID and detection epoch so the next NIS-normal
-        # cycle can call record_recalibration_complete.
-        filter_state["_anomaly_row_id"] = anomaly_row_id
-        filter_state["_anomaly_detection_epoch_utc"] = epoch_utc
+            _insert_state_history_row(
+                db=db,
+                norad_id=norad_id,
+                epoch_utc=epoch_utc,
+                state_eci_km=anomaly_ws_message["eci_km"] + anomaly_ws_message["eci_km_s"],
+                covariance_km2=anomaly_ws_message["covariance_diagonal_km2"],
+                nis=nis_val,
+                confidence=anomaly_ws_message["confidence"],
+                anomaly_type=detected_anomaly_type,
+                message_type=WS_TYPE_ANOMALY,
+            )
 
-        anomaly_ws_message = _build_ws_message(
-            norad_id=norad_id,
-            filter_state=filter_state,
-            message_type=WS_TYPE_ANOMALY,
-            anomaly_type=detected_anomaly_type,
-        )
-        # recalibrate() resets nis=0 and innovation_eci_km=zeros on the new
-        # filter state, so the message above will have picked up zeroed values.
-        # Override with the pre-recalibration values captured before recalibrate().
-        anomaly_ws_message["nis"] = nis_val
-        anomaly_ws_message["innovation_eci_km"] = innovation_eci_km_list
+            messages.append(anomaly_ws_message)
 
-        recal_ws_message = _build_ws_message(
-            norad_id=norad_id,
-            filter_state=filter_state,
-            message_type=WS_TYPE_RECALIBRATION,
-            anomaly_type=detected_anomaly_type,
-        )
+        else:
+            # Non-active satellites (debris, rocket bodies) cannot maneuver —
+            # recalibrate immediately as before.
+            recal_params = anomaly.trigger_recalibration(
+                norad_id=norad_id,
+                anomaly_type=detected_anomaly_type,
+                epoch_utc=epoch_utc,
+            )
 
-        _insert_state_history_row(
-            db=db,
-            norad_id=norad_id,
-            epoch_utc=epoch_utc,
-            state_eci_km=anomaly_ws_message["eci_km"] + anomaly_ws_message["eci_km_s"],
-            covariance_km2=anomaly_ws_message["covariance_diagonal_km2"],
-            nis=nis_val,
-            confidence=anomaly_ws_message["confidence"],
-            anomaly_type=detected_anomaly_type,
-            message_type=WS_TYPE_ANOMALY,
-        )
+            filter_state = kalman.recalibrate(
+                filter_state=filter_state,
+                new_observation_eci_km=observation_eci_km,
+                epoch_utc=epoch_utc,
+                inflation_factor=recal_params["inflation_factor"],
+            )
+            filter_state["last_tle_line1"] = tle_line1
+            filter_state["last_tle_line2"] = tle_line2
+            filter_states[norad_id] = filter_state
 
-        messages.append(anomaly_ws_message)
-        messages.append(recal_ws_message)
+            filter_state["_anomaly_row_id"] = anomaly_row_id
+            filter_state["_anomaly_detection_epoch_utc"] = epoch_utc
+
+            anomaly_ws_message = _build_ws_message(
+                norad_id=norad_id,
+                filter_state=filter_state,
+                message_type=WS_TYPE_ANOMALY,
+                anomaly_type=detected_anomaly_type,
+            )
+            anomaly_ws_message["nis"] = nis_val
+            anomaly_ws_message["innovation_eci_km"] = innovation_eci_km_list
+
+            recal_ws_message = _build_ws_message(
+                norad_id=norad_id,
+                filter_state=filter_state,
+                message_type=WS_TYPE_RECALIBRATION,
+                anomaly_type=detected_anomaly_type,
+            )
+
+            _insert_state_history_row(
+                db=db,
+                norad_id=norad_id,
+                epoch_utc=epoch_utc,
+                state_eci_km=anomaly_ws_message["eci_km"] + anomaly_ws_message["eci_km_s"],
+                covariance_km2=anomaly_ws_message["covariance_diagonal_km2"],
+                nis=nis_val,
+                confidence=anomaly_ws_message["confidence"],
+                anomaly_type=detected_anomaly_type,
+                message_type=WS_TYPE_ANOMALY,
+            )
+
+            messages.append(anomaly_ws_message)
+            messages.append(recal_ws_message)
 
     else:
         # No anomaly — check if a previously-flagged anomaly has now resolved.

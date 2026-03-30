@@ -366,6 +366,48 @@ def record_recalibration_complete(
     db.commit()
 
 
+def update_anomaly_type(
+    db: sqlite3.Connection,
+    anomaly_row_id: int,
+    new_anomaly_type: str,
+) -> None:
+    """Update the anomaly_type column for an existing alerts row.
+
+    Used by processing.py to retroactively change a provisional
+    'filter_divergence' record to 'maneuver' (or another type) once the
+    deferred classification is confirmed on the second exceedance cycle.
+
+    Args:
+        db: Open SQLite connection.
+        anomaly_row_id: Row ID returned by record_anomaly.
+        new_anomaly_type: New anomaly type string. Must be one of the
+            ANOMALY_* constants.
+
+    Raises:
+        ValueError: If no anomaly record with anomaly_row_id exists, or if
+            new_anomaly_type is not a recognised constant.
+    """
+    valid_types = {ANOMALY_MANEUVER, ANOMALY_DRAG, ANOMALY_DIVERGENCE}
+    if new_anomaly_type not in valid_types:
+        raise ValueError(
+            f"new_anomaly_type must be one of {valid_types}, got {new_anomaly_type!r}"
+        )
+
+    cursor = db.cursor()
+    cursor.execute(
+        "SELECT id FROM alerts WHERE id = ?",
+        (anomaly_row_id,),
+    )
+    if cursor.fetchone() is None:
+        raise ValueError(f"No anomaly record with id {anomaly_row_id}")
+
+    cursor.execute(
+        "UPDATE alerts SET anomaly_type = ? WHERE id = ?",
+        (new_anomaly_type, anomaly_row_id),
+    )
+    db.commit()
+
+
 def get_active_anomalies(db: sqlite3.Connection) -> list[dict]:
     """Retrieve all unresolved anomaly records.
 

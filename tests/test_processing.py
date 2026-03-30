@@ -261,3 +261,171 @@ def test_process_single_object_debris_class() -> None:
         tle_record=tle_record,
     )
     assert len(messages) == 1
+
+
+# ---------------------------------------------------------------------------
+# Tests for deferred recalibration (active satellite anomaly deferral)
+# ---------------------------------------------------------------------------
+
+def _inject_pending_anomaly_state(
+    filter_state: dict,
+    anomaly_row_id: int,
+    anomaly_type: str,
+    detection_epoch: datetime.datetime,
+    timeout_hours: float = 2.0,
+) -> None:
+    """Directly set _pending_anomaly_check keys on a filter state for testing."""
+    filter_state["_pending_anomaly_check"] = True
+    filter_state["_pending_anomaly_row_id"] = anomaly_row_id
+    filter_state["_pending_anomaly_type"] = anomaly_type
+    filter_state["_pending_anomaly_nis"] = 300.0
+    filter_state["_pending_anomaly_innovation"] = [10.0, 5.0, 3.0, 0.01, 0.01, 0.01]
+    filter_state["_pending_anomaly_epoch_utc"] = detection_epoch
+    filter_state["_pending_anomaly_timeout_utc"] = detection_epoch + datetime.timedelta(
+        hours=timeout_hours
+    )
+
+
+def test_active_satellite_anomaly_defers_recalibration() -> None:
+    """Cycle 1: anomaly on active satellite sets _pending_anomaly_check, no recal message."""
+    db = _make_in_memory_db()
+    entry = _make_catalog_entry(25544, object_class="active_satellite")
+    filter_states: dict = {}
+
+    # Cold start
+    process_single_object(
+        db=db, entry=entry, norad_id=25544, filter_states=filter_states,
+        tle_record=_make_tle_record(25544, "2026-03-28T12:00:00Z"),
+    )
+
+    # Force a high NIS on the next cycle by patching classify_anomaly.
+    with patch("backend.processing.anomaly.classify_anomaly", return_value=anomaly.ANOMALY_DIVERGENCE):
+        messages = process_single_object(
+            db=db, entry=entry, norad_id=25544, filter_states=filter_states,
+            tle_record=_make_tle_record(25544, "2026-03-28T12:30:00Z"),
+        )
+
+    # Cycle 1: should emit provisional anomaly but NO recalibration message.
+    assert len(messages) == 1
+    assert messages[0]["type"] == WS_TYPE_ANOMALY
+    assert messages[0]["anomaly_type"] == anomaly.ANOMALY_DIVERGENCE
+
+    # Pending state must be set.
+    fs = filter_states[25544]
+    assert fs.get("_pending_anomaly_check") is True
+    assert fs.get("_pending_anomaly_type") == anomaly.ANOMALY_DIVERGENCE
+
+
+def test_active_satellite_two_consecutive_exceedances_classified_as_maneuver() -> None:
+    """Cycle 2: two consecutive NIS exceedances -> anomaly upgraded to maneuver + recalibration."""
+    db = _make_in_memory_db()
+    entry = _make_catalog_entry(25544, object_class="active_satellite")
+    filter_states: dict = {}
+    detection_epoch = datetime.datetime(2026, 3, 28, 12, 30, 0, tzinfo=datetime.timezone.utc)
+
+    # Cold start
+    process_single_object(
+        db=db, entry=entry, norad_id=25544, filter_states=filter_states,
+        tle_record=_make_tle_record(25544, "2026-03-28T12:00:00Z"),
+    )
+
+    # Manually inject a provisional filter_divergence pending state.
+    fs = filter_states[25544]
+    row_id: int = anomaly.record_anomaly(
+        db=db,
+        norad_id=25544,
+        detection_epoch_utc=detection_epoch,
+        anomaly_type=anomaly.ANOMALY_DIVERGENCE,
+        nis_value=247.2,
+    )
+    _inject_pending_anomaly_state(fs, row_id, anomaly.ANOMALY_DIVERGENCE, detection_epoch)
+
+    # Cycle 2: classify_anomaly returns MANEUVER (2 consecutive exceedances).
+    with patch("backend.processing.anomaly.classify_anomaly", return_value=anomaly.ANOMALY_MANEUVER):
+        messages = process_single_object(
+            db=db, entry=entry, norad_id=25544, filter_states=filter_states,
+            tle_record=_make_tle_record(25544, "2026-03-28T13:00:00Z"),
+        )
+
+    # Should emit anomaly (upgraded to maneuver) + recalibration.
+    assert len(messages) == 2
+    assert messages[0]["type"] == WS_TYPE_ANOMALY
+    assert messages[0]["anomaly_type"] == anomaly.ANOMALY_MANEUVER
+    assert messages[1]["type"] == WS_TYPE_RECALIBRATION
+
+    # Pending state must be cleared.
+    fs = filter_states[25544]
+    assert "_pending_anomaly_check" not in fs
+
+    # DB record should be updated to maneuver.
+    cursor = db.execute("SELECT anomaly_type FROM alerts WHERE id=?", (row_id,))
+    assert cursor.fetchone()[0] == anomaly.ANOMALY_MANEUVER
+
+
+def test_non_active_satellite_recalibrates_immediately() -> None:
+    """Debris object: anomaly triggers immediate recalibration, no deferral."""
+    db = _make_in_memory_db()
+    entry = _make_catalog_entry(25544, object_class="debris")
+    filter_states: dict = {}
+
+    # Cold start
+    process_single_object(
+        db=db, entry=entry, norad_id=25544, filter_states=filter_states,
+        tle_record=_make_tle_record(25544, "2026-03-28T12:00:00Z"),
+    )
+
+    with patch("backend.processing.anomaly.classify_anomaly", return_value=anomaly.ANOMALY_DIVERGENCE):
+        messages = process_single_object(
+            db=db, entry=entry, norad_id=25544, filter_states=filter_states,
+            tle_record=_make_tle_record(25544, "2026-03-28T12:30:00Z"),
+        )
+
+    # Debris: immediate recalibration — both anomaly AND recalibration messages.
+    assert len(messages) == 2
+    assert messages[0]["type"] == WS_TYPE_ANOMALY
+    assert messages[1]["type"] == WS_TYPE_RECALIBRATION
+
+    # No pending state.
+    assert "_pending_anomaly_check" not in filter_states[25544]
+
+
+def test_pending_anomaly_timeout_resolves_as_provisional_type() -> None:
+    """If timeout elapses before cycle 2, resolve as provisional type and recalibrate."""
+    db = _make_in_memory_db()
+    entry = _make_catalog_entry(25544, object_class="active_satellite")
+    filter_states: dict = {}
+    detection_epoch = datetime.datetime(2026, 3, 28, 12, 30, 0, tzinfo=datetime.timezone.utc)
+
+    # Cold start
+    process_single_object(
+        db=db, entry=entry, norad_id=25544, filter_states=filter_states,
+        tle_record=_make_tle_record(25544, "2026-03-28T12:00:00Z"),
+    )
+
+    # Inject pending state with a timeout already in the past.
+    fs = filter_states[25544]
+    row_id = anomaly.record_anomaly(
+        db=db, norad_id=25544, detection_epoch_utc=detection_epoch,
+        anomaly_type=anomaly.ANOMALY_DIVERGENCE, nis_value=247.2,
+    )
+    _inject_pending_anomaly_state(
+        fs, row_id, anomaly.ANOMALY_DIVERGENCE, detection_epoch, timeout_hours=0.0
+    )
+    # Force timeout: epoch far in the future relative to timeout.
+    fs["_pending_anomaly_timeout_utc"] = detection_epoch  # already past
+
+    # Cycle 2 epoch is after the timeout.
+    with patch("backend.processing.anomaly.classify_anomaly", return_value=None):
+        messages = process_single_object(
+            db=db, entry=entry, norad_id=25544, filter_states=filter_states,
+            tle_record=_make_tle_record(25544, "2026-03-28T15:00:00Z"),
+        )
+
+    # Should resolve: anomaly + recalibration with the provisional type.
+    assert len(messages) == 2
+    assert messages[0]["type"] == WS_TYPE_ANOMALY
+    assert messages[0]["anomaly_type"] == anomaly.ANOMALY_DIVERGENCE
+    assert messages[1]["type"] == WS_TYPE_RECALIBRATION
+
+    # Pending state cleared.
+    assert "_pending_anomaly_check" not in filter_states[25544]
