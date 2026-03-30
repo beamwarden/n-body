@@ -207,7 +207,6 @@ export function updateSatellitePosition(viewer, stateUpdate) {
                 scale: 0.6,
                 verticalOrigin: Cesium.VerticalOrigin.CENTER,
                 horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
-                disableDepthTestDistance: Number.POSITIVE_INFINITY,
             },
             label: {
                 text: String(norad_id),
@@ -216,7 +215,6 @@ export function updateSatellitePosition(viewer, stateUpdate) {
                 style: Cesium.LabelStyle.FILL,
                 verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
                 pixelOffset: new Cesium.Cartesian2(0, -12),
-                disableDepthTestDistance: Number.POSITIVE_INFINITY,
                 show: false,
             },
             properties: {

@@ -349,10 +349,10 @@ Result: maneuver correctly classified when 2+ consecutive exceedances occur.
 
 3. **Inflation factor mismatch**: When a maneuver is eventually classified, the recalibration should use `inflation_factor=20.0` (maneuver-specific, per anomaly.py line 249). Under the current bug, all events use `inflation_factor=10.0` (filter_divergence). The fix naturally resolves this because the correct anomaly type determines the correct inflation factor.
 
-## Open questions
+## Open questions — RESOLVED 2026-03-30
 
-1. **Should the provisional anomaly record be created on cycle 1 (with possible retroactive update) or deferred entirely until cycle 2?** Creating it on cycle 1 means WebSocket clients see an early `filter_divergence` alert that may be corrected to `maneuver` 30 minutes later. Deferring entirely means no alert is visible until cycle 2 -- a 30-minute delay in anomaly notification. Recommendation: create the provisional record on cycle 1 for immediate operator awareness, and update it on cycle 2.
+1. **Alert timing:** Emit provisional `filter_divergence` alert on cycle 1. Update to `maneuver` on cycle 2 if confirmed. Monitor for alert saturation; revisit if operators see excessive provisional alerts.
 
-2. **Should the deferred-recalibration logic apply to drag_anomaly as well?** The drag anomaly classifier does not use consecutive cycles -- it is a single-cycle heuristic. The current plan applies deferral only to the maneuver path (where `consecutive_count == 1` and `is_active_satellite`). If the first cycle classifies as `drag_anomaly`, recalibration proceeds immediately. Confirm this is the desired behavior.
+2. **drag_anomaly deferral:** Apply deferral to drag_anomaly as well. Defer recalibration for all anomaly types on active satellites pending the second-cycle confirmation.
 
-3. **Maximum deferral window**: If no new TLE arrives for an extended period (e.g., Space-Track outage), the pending classification state persists indefinitely. Should there be a timeout (e.g., 2 hours) after which the pending state is resolved as `filter_divergence` and recalibration proceeds? Recommendation: yes, add a configurable timeout, default 2 hours (4 poll cycles).
+3. **Timeout:** Yes — add a configurable timeout (default 2 hours / 4 poll cycles). After timeout, resolve pending state as `filter_divergence` and recalibrate.
