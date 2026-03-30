@@ -422,6 +422,28 @@ the requirement or architecture section they relate to.
 
 ---
 
+### TD-029: Vectorized batch propagation for conjunction screening at 100-object scale
+- **Priority:** P2
+- **Source:** `docs/plans/2026-03-29-demo-scenario.md` catalog expansion performance note
+- **Relates to:** conjunction.py screening, F-030 (conjunction screening)
+- **Description:** With 100 catalog objects, conjunction screening requires 100 x 90 = 9,000
+  SGP4+astropy propagation calls per anomaly event. At 5-10 ms per call (including the
+  astropy TEME-to-GCRS frame rotation), total screening time is 45-90 seconds. This is
+  acceptable for a demo with one anomaly event at a time, but blocks the event loop
+  (mitigated by `asyncio.run_in_executor` in main.py) and would be prohibitive for
+  production catalog sizes (10k+ objects).
+- **Resolution path:** Replace the per-point `propagator.propagate_tle` call in
+  `conjunction.generate_trajectory_eci_km` with the sgp4 library's vectorized
+  `SatrecArray` API, which propagates multiple epochs in a single C-level call.
+  Batch the TEME-to-J2000 conversion using astropy's vectorized `Time` and coordinate
+  arrays. Expected speedup: 10-50x for 90 time steps per object. For multi-object
+  screening, propagate all objects at all epochs in a single vectorized call and compute
+  pairwise distances using numpy broadcasting. Expected total screening time for 100
+  objects: 1-5 seconds.
+- **Status:** Open
+
+---
+
 ### TD-023: scripts/replay.py and scripts/seed_maneuver.py are not implemented
 - **Priority:** P1
 - **Source:** `scripts/replay.py` line 21; `scripts/seed_maneuver.py` line 29

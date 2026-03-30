@@ -51,7 +51,7 @@ This project uses two specialized sub-agents. Always clarify which agent should 
 ### Data source
 - **Space-Track.org** — free TLE catalog (requires free account, ITAR-aware)
 - Polling interval: every 30 minutes (per Space-Track rate limits)
-- 20–50 curated objects for POC (Starlink batch, ISS, known maneuvering objects)
+- Up to 100 curated objects for POC (20-50 originally, expanded for demo richness — Starlink batch, ISS, debris clouds, rocket bodies, CubeSats)
 
 ---
 

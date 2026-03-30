@@ -25,7 +25,7 @@ This document defines the functional and non-functional requirements for the n-b
 
 **F-004** The system shall cache all retrieved TLEs in local persistent storage with fetch timestamp, so the demo can run offline after an initial data pull.
 
-**F-005** The system shall support a catalog configuration file listing the NORAD IDs of objects to track (minimum 20, maximum 50 for POC).
+**F-005** The system shall support a catalog configuration file listing the NORAD IDs of objects to track (minimum 20, maximum 100 for POC).
 
 **F-006** The system shall log all Space-Track API calls with timestamp, response code, and object count for audit purposes.
 
