@@ -204,6 +204,28 @@ export function connectWebSocket(url) {
         // NF-012: On reconnect, fetch catalog to re-seed globe and charts (step 27).
         const catalog = await fetchCatalog(backendBaseUrl);
         _seedFromCatalog(catalog);
+
+        // Seed alert panel with any active anomalies that fired while disconnected.
+        try {
+            const resp = await fetch(`${backendBaseUrl}/alerts/active`);
+            if (resp.ok) {
+                const activeAlerts = await resp.json();
+                for (const alert of activeAlerts) {
+                    if (panelState) {
+                        addAlert(panelState, alert, nameMap, (clickedId) => {
+                            selectedNoradId = clickedId;
+                            if (chartState) selectObject(chartState, clickedId);
+                            _showObjectInfoPanel(clickedId);
+                            _fetchAndDrawTrack(clickedId).catch((err) => {
+                                console.warn('[main] _fetchAndDrawTrack (alert seed) error:', err);
+                            });
+                        });
+                    }
+                }
+            }
+        } catch (err) {
+            console.warn('[main] Failed to seed active alerts on connect:', err);
+        }
     };
 
     socket.onmessage = (event) => {

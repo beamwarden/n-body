@@ -891,6 +891,59 @@ async def get_object_anomalies(norad_id: int) -> list[dict]:
     return result
 
 
+@app.get("/alerts/active")
+async def get_active_alerts() -> list[dict]:
+    """Return all currently unresolved anomaly alerts across the catalog.
+
+    Used by the frontend on WebSocket connect/reconnect to seed the alert
+    panel with any anomalies that fired while the client was disconnected.
+    Returns alerts ordered newest-first, formatted as WebSocket anomaly
+    message dicts so the frontend can call addAlert() directly.
+
+    Returns:
+        List of dicts with keys: type, norad_id, epoch_utc, anomaly_type,
+        nis, innovation_eci_km, confidence, eci_km, eci_km_s,
+        covariance_diagonal_km2.
+    """
+    db: sqlite3.Connection = app.state.db
+    active = anomaly.get_active_anomalies(db)
+
+    result: list[dict] = []
+    for row in active:
+        norad_id: int = row["norad_id"]
+        # Build a WS-compatible anomaly message from the DB record.
+        # Use filter state for position/confidence if available.
+        fs: Optional[dict] = app.state.filter_states.get(norad_id)
+        if fs is not None:
+            from backend.kalman import get_state
+            state = get_state(fs)
+            eci_km = state["state_eci_km"][:3].tolist()
+            eci_km_s = state["state_eci_km"][3:].tolist()
+            cov = state["covariance_km2"]
+            cov_diag = [float(cov[0,0]), float(cov[1,1]), float(cov[2,2])]
+            confidence = float(state["confidence"])
+        else:
+            eci_km = [0.0, 0.0, 0.0]
+            eci_km_s = [0.0, 0.0, 0.0]
+            cov_diag = [1000.0, 1000.0, 1000.0]
+            confidence = 0.0
+
+        result.append({
+            "type": "anomaly",
+            "norad_id": norad_id,
+            "epoch_utc": row["detection_epoch_utc"],
+            "anomaly_type": row["anomaly_type"],
+            "nis": row["nis_value"],
+            "innovation_eci_km": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            "confidence": confidence,
+            "eci_km": eci_km,
+            "eci_km_s": eci_km_s,
+            "covariance_diagonal_km2": cov_diag,
+        })
+
+    return result
+
+
 @app.get("/object/{norad_id}/conjunctions")
 async def get_object_conjunctions(norad_id: int) -> list[dict]:
     """Return the last 5 conjunction screening results for a given NORAD ID.
