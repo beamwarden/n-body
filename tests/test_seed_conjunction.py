@@ -391,9 +391,21 @@ def test_full_conjunction_scenario(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 def test_catalog_json_valid_structure() -> None:
-    """The expanded catalog.json has valid structure and correct count.
+    """The VLEO-rebuilt catalog.json has valid structure and correct count.
 
-    Loads the actual data/catalog/catalog.json (the expanded 100-object catalog).
+    Loads the actual data/catalog/catalog.json (the VLEO catalog rebuilt per
+    plan docs/plans/2026-04-01-vleo-catalog-rebuild.md, targeting <=600 km
+    objects). Count range updated from [95, 105] to [75, 105] to reflect the
+    rebuilt catalog which specifies 80 objects as the baseline, with the plan
+    allowing growth to 85-100 if substitutes for re-entered objects are found.
+
+    # DEVIATION from plan docs/plans/2026-04-01-vleo-catalog-rebuild.md:
+    # Plan section "Test strategy" stated "No test file changes required."
+    # This was incorrect: test_catalog_json_valid_structure directly reads the
+    # real data/catalog/catalog.json and asserts 95 <= count <= 105. The rebuilt
+    # catalog contains 80 objects (per the user-approved object list), which
+    # fails the original assertion. Count range updated to [75, 105] per the
+    # plan's stated 80-100 target. Flagged for planner review.
     """
     catalog_path = str(
         Path(__file__).resolve().parent.parent / "data" / "catalog" / "catalog.json"
@@ -420,10 +432,11 @@ def test_catalog_json_valid_structure() -> None:
         )
         norad_ids_seen.add(norad_id)
 
-    # Count must be in [95, 105] per plan test strategy.
+    # Count must be in [75, 105] per VLEO rebuild plan (80-object baseline,
+    # plan allows 85-100 with verified substitutes).
     count = len(catalog)
-    assert 95 <= count <= 105, (
-        f"Catalog count {count} is outside [95, 105] — expected ~100 objects"
+    assert 75 <= count <= 105, (
+        f"Catalog count {count} is outside [75, 105] — expected 80-100 VLEO objects"
     )
 
 
