@@ -533,9 +533,10 @@ export function drawPredictiveTrackWithCone(viewer, forwardTrackPoints) {
     });
 
     // Uncertainty corridor: Option A — segmented corridors (plan decision 2).
-    // Group forward points into segments of ~5 points each. Each segment gets
-    // a constant width = 2 * uncertainty_radius_km at the midpoint (in metres).
-    const SEGMENT_SIZE = 5;
+    // Group forward points into segments of 2 points each (one per step) for a
+    // smooth cone. Each segment gets a constant width = 2 * uncertainty_radius_km
+    // at the midpoint (in metres).
+    const SEGMENT_SIZE = 2;
     const numSegments = Math.ceil(forwardTrackPoints.length / SEGMENT_SIZE);
 
     for (let seg = 0; seg < numSegments; seg++) {
@@ -547,11 +548,13 @@ export function drawPredictiveTrackWithCone(viewer, forwardTrackPoints) {
         // Use the midpoint of the segment for the width value.
         // Apply a 10x display scale factor so the cone is visible at full-Earth
         // zoom (~35,000 km altitude). Raw uncertainty radii (~30-100 km) are
-        // imperceptible at that scale without scaling. Clamp to [50, 2000] km.
+        // imperceptible at that scale without scaling.
+        // Floor at 20 km (display) so the near-satellite cone tip remains visible.
+        // Clamp ceiling at 2000 km.
         const midIdx = Math.floor((startIdx + endIdx - 1) / 2);
         const midPt = forwardTrackPoints[Math.min(midIdx, forwardTrackPoints.length - 1)];
         const rawRadius_km = midPt.uncertainty_radius_km * 10;
-        const clampedRadius_km = Math.max(50, Math.min(2000, rawRadius_km));
+        const clampedRadius_km = Math.max(20, Math.min(2000, rawRadius_km));
         const corridorWidth_m = clampedRadius_km * 2 * 1000;
 
         const coneSegEntity = viewer.entities.add({
