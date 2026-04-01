@@ -1,4 +1,4 @@
-# n-body: Requirements Document
+# ne-body: Requirements Document
 **Version 0.1 — POC**
 **Project:** Continuous Monitoring & Prediction Platform for Space Situational Awareness
 **Status:** Draft — for funding review
@@ -7,7 +7,7 @@
 
 ## 1. Document purpose
 
-This document defines the functional and non-functional requirements for the n-body proof-of-concept. Requirements are scoped to the funding demo milestone. Post-POC requirements are listed separately in Section 5 and are out of scope for initial implementation.
+This document defines the functional and non-functional requirements for the ne-body proof-of-concept. Requirements are scoped to the funding demo milestone. Post-POC requirements are listed separately in Section 5 and are out of scope for initial implementation.
 
 **Requirement IDs** follow the pattern `F-NNN` (functional) and `NF-NNN` (non-functional). Requirements marked `[DEMO]` are specifically required to be demonstrable in a live funding presentation.
 

@@ -1,4 +1,4 @@
-# Concept of Operations: n-body Continuous Space Domain Awareness Platform
+# Concept of Operations: ne-body Continuous Space Domain Awareness Platform
 Version: 0.1.0
 Status: Draft
 Last updated: 2026-03-29
@@ -7,9 +7,9 @@ Last updated: 2026-03-29
 
 ## Overview
 
-This document describes the operational concept for the n-body Space Situational Awareness (SSA) platform. It defines the system's mission context, the users who interact with it, the end-to-end operational loop under steady-state and anomaly conditions, a full demo scenario walkthrough, data provenance and compliance obligations, and the production deployment pathway. The document is intended for Space Force SpaceWERX/AFWERX and NASA SBIR reviewers assessing operational relevance, and for Accenture Federal Services (AFS) technical evaluators assessing delivery scope.
+This document describes the operational concept for the ne-body Space Situational Awareness (SSA) platform. It defines the system's mission context, the users who interact with it, the end-to-end operational loop under steady-state and anomaly conditions, a full demo scenario walkthrough, data provenance and compliance obligations, and the production deployment pathway. The document is intended for Space Force SpaceWERX/AFWERX and NASA SBIR reviewers assessing operational relevance, and for Accenture Federal Services (AFS) technical evaluators assessing delivery scope.
 
-The n-body platform replaces periodic, static orbital prediction with a continuous observe-propagate-validate-recalibrate cycle. This cycle detects maneuvers, atmospheric drag anomalies, and filter divergence events within one to two TLE update cycles (approximately 30 to 90 minutes), compared to the hours or days required for manual catalog reconciliation in existing SSA workflows.
+The ne-body platform replaces periodic, static orbital prediction with a continuous observe-propagate-validate-recalibrate cycle. This cycle detects maneuvers, atmospheric drag anomalies, and filter divergence events within one to two TLE update cycles (approximately 30 to 90 minutes), compared to the hours or days required for manual catalog reconciliation in existing SSA workflows.
 
 ---
 
@@ -23,7 +23,7 @@ Standard space domain awareness relies on Two-Line Element sets (TLEs) published
 
 2. **No closed loop.** When a new TLE arrives that is inconsistent with the propagated prediction, standard tooling does not automatically flag the inconsistency, classify its cause, or trigger reassessment. That analysis is performed manually by trained analysts, introducing latency.
 
-The n-body platform closes this loop. Every incoming TLE update is tested against the system's current probabilistic state estimate. Residuals outside expected noise bounds trigger an automated anomaly flag, anomaly classification, and filter recalibration — all without analyst intervention. The analyst receives a characterized event (maneuver / drag anomaly / filter divergence) with supporting evidence (NIS time series, residual magnitude, confidence trajectory), not raw data.
+The ne-body platform closes this loop. Every incoming TLE update is tested against the system's current probabilistic state estimate. Residuals outside expected noise bounds trigger an automated anomaly flag, anomaly classification, and filter recalibration — all without analyst intervention. The analyst receives a characterized event (maneuver / drag anomaly / filter divergence) with supporting evidence (NIS time series, residual magnitude, confidence trajectory), not raw data.
 
 ### Where this fits in the SSA mission
 
@@ -210,7 +210,7 @@ The presenter's narrative: "Two update cycles later — about an hour in real ti
 
 #### Step 5 — Contrast: static SGP4-only prediction
 
-<!-- FIGURE: Side-by-side screenshot showing (left) the n-body visualization with NIS spike and anomaly highlight at maneuver epoch, and (right) a static SGP4 extrapolation from the pre-maneuver TLE showing no anomaly flag — awaiting screenshot from user -->
+<!-- FIGURE: Side-by-side screenshot showing (left) the ne-body visualization with NIS spike and anomaly highlight at maneuver epoch, and (right) a static SGP4 extrapolation from the pre-maneuver TLE showing no anomaly flag — awaiting screenshot from user -->
 
 Without the closed-loop filter, a static SGP4 prediction from the pre-maneuver TLE continues to extrapolate the pre-maneuver orbit indefinitely. No residual is computed. No anomaly fires. The position error grows silently — reaching kilometers within hours. An operator using a static propagation tool would not know the orbit had changed until a new TLE was published and manually compared.
 
@@ -244,7 +244,7 @@ This constitutes a two-event autonomous real-world validation dataset collected 
 
 ### Production Security and Data Classification Pathway
 
-This section describes the pathway the n-body platform would follow in a production deployment handling Controlled Unclassified Information (CUI) or classified sensor data. No classified data or methods are documented here. This section is informational only and describes architectural intent.
+This section describes the pathway the ne-body platform would follow in a production deployment handling Controlled Unclassified Information (CUI) or classified sensor data. No classified data or methods are documented here. This section is informational only and describes architectural intent.
 
 #### Current POC security posture (limitations)
 
@@ -300,15 +300,15 @@ Full scalability path detail is documented in `docs/architecture.md` Section 6.
 
 ### Value proposition relative to the state of the art
 
-The following comparison characterizes the n-body system's advantages relative to the current operational SSA toolset. A detailed prior art comparison matrix will be published as `docs/reference/prior-art-comparison.md`.
+The following comparison characterizes the ne-body system's advantages relative to the current operational SSA toolset. A detailed prior art comparison matrix will be published as `docs/reference/prior-art-comparison.md`.
 
-**Detection latency.** Static SGP4 propagation from a fixed TLE does not detect anomalies — it propagates indefinitely regardless of whether the underlying orbit has changed. The n-body platform detects divergence within the first TLE update cycle following an event, typically 30 to 90 minutes after the event epoch. For comparison, manual catalog reconciliation following an unannounced maneuver typically requires analyst review of multiple successive TLEs, introducing detection latency of hours to days.
+**Detection latency.** Static SGP4 propagation from a fixed TLE does not detect anomalies — it propagates indefinitely regardless of whether the underlying orbit has changed. The ne-body platform detects divergence within the first TLE update cycle following an event, typically 30 to 90 minutes after the event epoch. For comparison, manual catalog reconciliation following an unannounced maneuver typically requires analyst review of multiple successive TLEs, introducing detection latency of hours to days.
 
-**Automated anomaly classification.** Current SSA workflows present an analyst with a new TLE and an updated ephemeris. Determining whether a discrepancy represents a maneuver, a drag anomaly, or a TLE quality issue requires experienced manual analysis. The n-body system classifies the anomaly automatically in the same processing cycle that detects it, using the NIS history, innovation direction, and object class to distinguish the three event types (F-031).
+**Automated anomaly classification.** Current SSA workflows present an analyst with a new TLE and an updated ephemeris. Determining whether a discrepancy represents a maneuver, a drag anomaly, or a TLE quality issue requires experienced manual analysis. The ne-body system classifies the anomaly automatically in the same processing cycle that detects it, using the NIS history, innovation direction, and object class to distinguish the three event types (F-031).
 
-**Continuous monitoring vs. periodic updates.** Commercial platforms such as LeoLabs and Slingshot Aerospace provide high-accuracy tracking using proprietary sensor networks but operate on a catalog update model — new observations are incorporated when sensor data is available. The n-body system's closed-loop filter runs on every TLE publication, providing a continuous probabilistic track with explicit uncertainty quantification, rather than a periodic state snapshot.
+**Continuous monitoring vs. periodic updates.** Commercial platforms such as LeoLabs and Slingshot Aerospace provide high-accuracy tracking using proprietary sensor networks but operate on a catalog update model — new observations are incorporated when sensor data is available. The ne-body system's closed-loop filter runs on every TLE publication, providing a continuous probabilistic track with explicit uncertainty quantification, rather than a periodic state snapshot.
 
-**Conjunction screening integrated with anomaly detection.** Standard conjunction assessment is a scheduled batch process. The n-body system triggers conjunction screening automatically when an anomaly is detected, recognizing that a maneuver event is precisely the condition under which conjunction risk may have changed. This coupling of anomaly detection and conjunction reassessment is not present in standard SSA workflows.
+**Conjunction screening integrated with anomaly detection.** Standard conjunction assessment is a scheduled batch process. The ne-body system triggers conjunction screening automatically when an anomaly is detected, recognizing that a maneuver event is precisely the condition under which conjunction risk may have changed. This coupling of anomaly detection and conjunction reassessment is not present in standard SSA workflows.
 
 **Simulation fidelity boundary.** The POC uses public TLEs as synthetic observations. This approximates the sensor-to-catalog pipeline without requiring proprietary sensor access. The filter's performance in a production environment with real sensor observations (higher accuracy, higher rate) will be materially better than what is demonstrated in the POC. The POC demonstrates the architectural approach and the detection capability — not the performance ceiling.
 

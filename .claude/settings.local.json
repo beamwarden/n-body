@@ -1,13 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python -m py_compile /Users/jebbaugh/git/n-body/backend/ingest.py)",
-      "Bash(python -m py_compile /Users/jebbaugh/git/n-body/backend/propagator.py)",
-      "Bash(python -m py_compile /Users/jebbaugh/git/n-body/backend/kalman.py)",
-      "Bash(python -m py_compile /Users/jebbaugh/git/n-body/backend/anomaly.py)",
-      "Bash(python -m py_compile /Users/jebbaugh/git/n-body/backend/main.py)",
-      "Bash(python -m py_compile /Users/jebbaugh/git/n-body/scripts/replay.py)",
-      "Bash(python -m py_compile /Users/jebbaugh/git/n-body/scripts/seed_maneuver.py)",
+      "Bash(python -m py_compile /Users/jebbaugh/git/ne-body/backend/ingest.py)",
+      "Bash(python -m py_compile /Users/jebbaugh/git/ne-body/backend/propagator.py)",
+      "Bash(python -m py_compile /Users/jebbaugh/git/ne-body/backend/kalman.py)",
+      "Bash(python -m py_compile /Users/jebbaugh/git/ne-body/backend/anomaly.py)",
+      "Bash(python -m py_compile /Users/jebbaugh/git/ne-body/backend/main.py)",
+      "Bash(python -m py_compile /Users/jebbaugh/git/ne-body/scripts/replay.py)",
+      "Bash(python -m py_compile /Users/jebbaugh/git/ne-body/scripts/seed_maneuver.py)",
       "Bash(python -m py_compile backend/ingest.py backend/propagator.py backend/kalman.py backend/anomaly.py backend/main.py)",
       "Bash(python -m py_compile tests/test_propagator.py tests/test_kalman.py tests/test_anomaly.py tests/test_ingest.py tests/test_main.py)",
       "Bash(pip install:*)",
@@ -25,7 +25,8 @@
       "Bash(python3 -c \"import sys; print\\(sys.version\\); import sgp4; print\\(''sgp4 ok''\\)\")",
       "Bash(/Users/jebbaugh/.pyenv/versions/3.10.14/bin/pip list:*)",
       "Bash(pip show:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git remote:*)"
     ]
   }
 }

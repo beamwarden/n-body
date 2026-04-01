@@ -1,7 +1,7 @@
 {
-  "name": "n-body-frontend",
+  "name": "ne-body-frontend",
   "version": "0.1.0",
-  "description": "Browser frontend for the n-body SSA platform. All runtime dependencies loaded from CDN.",
+  "description": "Browser frontend for the ne-body SSA platform. All runtime dependencies loaded from CDN.",
   "private": true,
   "scripts": {
     "serve": "python3 -m http.server 3000",

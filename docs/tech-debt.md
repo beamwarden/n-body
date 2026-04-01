@@ -1,4 +1,4 @@
-# n-body — Technical Debt Register
+# ne-body — Technical Debt Register
 Last updated: 2026-03-28
 
 This document tracks all known technical debt, POC simplifications, and deferred

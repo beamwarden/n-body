@@ -1,4 +1,4 @@
-# n-body SSA Platform — Engineering Log
+# ne-body SSA Platform — Engineering Log
 
 Chronological record of development sessions, real-world events, and observations.
 Most recent day first.

@@ -1,4 +1,4 @@
-# Engineering Log — n-body SSA Platform
+# Engineering Log — ne-body SSA Platform
 
 Narrative record of daily progress, decisions, and open threads.
 Most recent entry first.

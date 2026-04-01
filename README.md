@@ -1,6 +1,6 @@
-# n-body — Space Situational Awareness Platform
+# ne-body — Space Situational Awareness Platform
 
-**n-body** is a browser-based Continuous Monitoring & Prediction Platform for Space Situational Awareness (SSA). It replaces static long-horizon orbital predictions with a closed-loop **observe → propagate → validate → recalibrate** cycle, directly addressing the Lyapunov instability that limits traditional propagation accuracy over time.
+**ne-body** is a browser-based Continuous Monitoring & Prediction Platform for Space Situational Awareness (SSA). It replaces static long-horizon orbital predictions with a closed-loop **observe → propagate → validate → recalibrate** cycle, directly addressing the Lyapunov instability that limits traditional propagation accuracy over time.
 
 The current deliverable is a funded proof-of-concept targeting DoD/Space Force and NASA audiences.
 
@@ -49,7 +49,7 @@ TLE updates from Space-Track.org serve as both propagation seeds and synthetic g
 ## Project structure
 
 ```
-n-body/
+ne-body/
 ├── backend/
 │   ├── main.py          # FastAPI app — REST endpoints + WebSocket /ws/live
 │   ├── ingest.py        # Sole interface to Space-Track.org

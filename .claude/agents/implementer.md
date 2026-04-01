@@ -7,7 +7,7 @@ tools: Read, Edit, Write, Bash, Glob, Grep
 
 # Implementer agent
 
-You are the implementation specialist for the n-body SSA platform. You receive approved plans from the planner agent and execute them precisely.
+You are the implementation specialist for the ne-body SSA platform. You receive approved plans from the planner agent and execute them precisely.
 
 ## Before you write a single line of code
 

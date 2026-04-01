@@ -4,7 +4,7 @@ Status: Draft
 
 ## Summary
 
-This plan defines a complete documentation set for the n-body SSA platform, serving three audiences simultaneously: SBIR proposal reviewers (Space Force/NASA), Accenture Federal Services (AFS) acquisition evaluators, and the internal engineering team. Each document is scoped to what currently exists in the codebase, not aspirational features. The plan specifies 10 documents across four priority tiers, with a critical-path subset of 4 documents identified for a proposal deadline sprint.
+This plan defines a complete documentation set for the ne-body SSA platform, serving three audiences simultaneously: SBIR proposal reviewers (Space Force/NASA), Accenture Federal Services (AFS) acquisition evaluators, and the internal engineering team. Each document is scoped to what currently exists in the codebase, not aspirational features. The plan specifies 10 documents across four priority tiers, with a critical-path subset of 4 documents identified for a proposal deadline sprint.
 
 ## Requirements addressed
 
@@ -84,7 +84,7 @@ None. This is a documentation-only plan.
      - Static SGP4 propagation (standard 18th Space Defense Squadron catalog)
      - Commercial SSA platforms (LeoLabs radar-centric, Slingshot visualization-centric, ExoAnalytic optical) — characterize what they solve and what remains unsolved
      - Academic orbit determination (batch least squares, sequential filters) — why these exist but are not accessible as continuous monitoring tools
-  3. n-body approach: reframing from prediction accuracy to detection latency
+  3. ne-body approach: reframing from prediction accuracy to detection latency
      - Control systems analogy: the orbit as a plant, TLE updates as sensor measurements, UKF as the estimator, anomaly detection as the alarm
   4. UKF formulation:
      - State vector definition: [x, y, z, vx, vy, vz] ECI J2000 km/km/s
@@ -306,7 +306,7 @@ None. This is a documentation-only plan.
 - **Type:** Reference
 - **Priority:** P2
 - **Audiences:** SBIR reviewers
-- **Purpose:** Side-by-side comparison of n-body's approach against existing SSA tools and methods. SBIR reviewers need to see that the applicant understands the competitive landscape and has a defensible differentiation.
+- **Purpose:** Side-by-side comparison of ne-body's approach against existing SSA tools and methods. SBIR reviewers need to see that the applicant understands the competitive landscape and has a defensible differentiation.
 - **Estimated pages:** 3-4
 - **Key sections:**
   1. Comparison dimensions: detection latency, data sources, prediction method, anomaly detection, conjunction assessment, operator interface, deployment model, data classification level
@@ -317,8 +317,8 @@ None. This is a documentation-only plan.
      - ExoAnalytic Solutions (optical network, deep-space focus, catalog augmentation)
      - AGI/Ansys STK (simulation and analysis tool, not a continuous monitoring platform)
      - Academic OD software (GMAT, Orekit) — general purpose, not integrated monitoring
-  3. n-body differentiation: closed-loop continuous estimation, sub-hour anomaly detection, automated classification, browser-based visualization with real-time filter state
-  4. Limitations of comparison: n-body is a POC using TLE as observation proxy; production systems use real sensor data. The comparison is against the *approach*, not the *data quality*.
+  3. ne-body differentiation: closed-loop continuous estimation, sub-hour anomaly detection, automated classification, browser-based visualization with real-time filter state
+  4. Limitations of comparison: ne-body is a POC using TLE as observation proxy; production systems use real sensor data. The comparison is against the *approach*, not the *data quality*.
 - **Source files the techwriter must read:**
   - `docs/architecture.md` Section 2 (core architectural concept — the "why")
   - `docs/requirements.md` Section 5 (post-POC: multi-source, high-fidelity propagator)

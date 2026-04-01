@@ -1,4 +1,4 @@
-# n-body: System Architecture Document
+# ne-body: System Architecture Document
 **Version 0.1 — POC**
 **Project:** Continuous Monitoring & Prediction Platform for Space Situational Awareness
 **Status:** Draft — for funding review
@@ -7,7 +7,7 @@
 
 ## 1. Purpose and scope
 
-This document describes the architecture of the n-body proof-of-concept system. It covers the data flow from TLE ingestion through orbital propagation, Kalman filter state estimation, anomaly detection, and browser-based visualization.
+This document describes the architecture of the ne-body proof-of-concept system. It covers the data flow from TLE ingestion through orbital propagation, Kalman filter state estimation, anomaly detection, and browser-based visualization.
 
 The POC scope is intentionally constrained: a single-node Python backend, a CDN-served browser frontend, and Space-Track.org as the sole data source. The architecture is designed so that each component can be replaced or scaled independently as the platform matures toward production.
 
@@ -17,7 +17,7 @@ The POC scope is intentionally constrained: a single-node Python backend, a CDN-
 
 Traditional SSA systems compute a trajectory once and extrapolate forward. Prediction error grows with time because orbital dynamics are chaotic — small unmodeled perturbations (atmospheric drag variations, solar radiation pressure, unannounced maneuvers) compound exponentially. The standard response has been to improve propagator fidelity, which has diminishing returns.
 
-The n-body approach abandons the long-horizon prediction model entirely. Instead of asking "how accurately can we predict position in 72 hours?", it asks "how quickly can we detect that our current prediction is wrong and correct it?" This reframes the problem from a mathematical accuracy challenge to a control systems problem — specifically, a recursive state estimation problem that Kalman filtering is well suited for.
+The ne-body approach abandons the long-horizon prediction model entirely. Instead of asking "how accurately can we predict position in 72 hours?", it asks "how quickly can we detect that our current prediction is wrong and correct it?" This reframes the problem from a mathematical accuracy challenge to a control systems problem — specifically, a recursive state estimation problem that Kalman filtering is well suited for.
 
 The fundamental loop is:
 

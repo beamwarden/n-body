@@ -4,7 +4,7 @@ Status: Draft
 
 ## Summary
 
-This plan adds three related features to the n-body SSA platform: (1) a per-object anomaly history panel in the frontend populated by a new REST endpoint, (2) a historical ground track drawn on the CesiumJS globe for the selected object using SGP4 back-propagation, and (3) a forward predictive track with a widening uncertainty corridor derived from filter covariance. Features 1 and 2 are independent; Feature 3 extends the track endpoint from Feature 2.
+This plan adds three related features to the ne-body SSA platform: (1) a per-object anomaly history panel in the frontend populated by a new REST endpoint, (2) a historical ground track drawn on the CesiumJS globe for the selected object using SGP4 back-propagation, and (3) a forward predictive track with a widening uncertainty corridor derived from filter covariance. Features 1 and 2 are independent; Feature 3 extends the track endpoint from Feature 2.
 
 ## Requirements addressed
 

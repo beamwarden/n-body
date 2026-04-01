@@ -394,7 +394,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
             "Inject a synthetic threat object (NORAD 99999) into the TLE cache "
-            "to trigger conjunction detection in the n-body pipeline (F-030, F-061)."
+            "to trigger conjunction detection in the ne-body pipeline (F-030, F-061)."
         )
     )
     parser.add_argument(

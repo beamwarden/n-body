@@ -1,4 +1,4 @@
-"""5-act demo orchestration script for n-body SSA platform DoD/Space Force presentations.
+"""5-act demo orchestration script for ne-body SSA platform DoD/Space Force presentations.
 
 Orchestrates the full demo narrative: baseline tracking, ASAT debris conjunction with ISS,
 unannounced Starlink maneuver, ISR asset repositioning, and filter recalibration.
@@ -973,7 +973,7 @@ def print_all_scripts() -> None:
         ("[ACT 5] RECALIBRATION / RESOLUTION", _PRESENTER_ACT5),
     ]
     print()
-    print("n-body SSA Demo — Presenter Scripts (rehearsal mode)")
+    print("ne-body SSA Demo — Presenter Scripts (rehearsal mode)")
     print("=" * 70)
     for header, script in acts:
         print()
@@ -995,7 +995,7 @@ def main() -> None:
     """Parse arguments and run the requested demo acts."""
     parser = argparse.ArgumentParser(
         description=(
-            "n-body SSA platform — 5-act demo orchestration script for "
+            "ne-body SSA platform — 5-act demo orchestration script for "
             "DoD/Space Force/NASA presentations."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,

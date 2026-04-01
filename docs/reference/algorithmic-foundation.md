@@ -7,13 +7,13 @@ Last updated: 2026-03-30
 
 ## Overview
 
-This document describes the mathematical and algorithmic basis of the n-body Space Situational Awareness (SSA) platform, and establishes its novel contribution relative to the current state of the art in orbital tracking, anomaly detection, and conjunction assessment. It is the primary technical merit document for SBIR reviewers and AFS technical evaluators. The document is grounded entirely in the implemented system: all formulas, parameters, constants, and thresholds are drawn directly from source code and engineering records. Claims of novelty are bounded to what the proof-of-concept demonstrates; the production path is clearly distinguished from the POC.
+This document describes the mathematical and algorithmic basis of the ne-body Space Situational Awareness (SSA) platform, and establishes its novel contribution relative to the current state of the art in orbital tracking, anomaly detection, and conjunction assessment. It is the primary technical merit document for SBIR reviewers and AFS technical evaluators. The document is grounded entirely in the implemented system: all formulas, parameters, constants, and thresholds are drawn directly from source code and engineering records. Claims of novelty are bounded to what the proof-of-concept demonstrates; the production path is clearly distinguished from the POC.
 
 ---
 
 ## Context
 
-The n-body platform implements a closed-loop, continuous orbital state estimation system using a per-object Unscented Kalman Filter (UKF) driven by SGP4-propagated TLE observations. The architectural concept — replacing static long-horizon prediction with a recursive estimation loop — is described in `docs/architecture.md` Section 2 and the CONOPS in `docs/reference/conops.md`. This document provides the mathematical depth required to evaluate that concept on technical merit.
+The ne-body platform implements a closed-loop, continuous orbital state estimation system using a per-object Unscented Kalman Filter (UKF) driven by SGP4-propagated TLE observations. The architectural concept — replacing static long-horizon prediction with a recursive estimation loop — is described in `docs/architecture.md` Section 2 and the CONOPS in `docs/reference/conops.md`. This document provides the mathematical depth required to evaluate that concept on technical merit.
 
 The primary pipeline is:
 
@@ -55,7 +55,7 @@ The fundamental limit of traditional SSA is not computational but mathematical. 
 
 The standard response has been to publish updated TLEs more frequently and improve propagator fidelity. Both approaches have diminishing returns. More frequent TLEs reduce the integration horizon but do not eliminate the instability. Higher-fidelity propagators (numerical integrators with full atmospheric and radiation models) reduce systematic error but cannot model unannounced maneuvers or real-time atmospheric density variations.
 
-The n-body platform does not attempt to solve the long-horizon prediction problem. Instead, it reframes it: the question changes from "how accurately can we predict position in 72 hours?" to "how quickly can we detect that our current prediction is wrong and correct it?" This is a control systems reframing. The orbit is the plant; TLE updates are noisy sensor measurements; the UKF is the estimator; anomaly detection is the alarm. The system's metric of merit is detection latency, not prediction accuracy.
+The ne-body platform does not attempt to solve the long-horizon prediction problem. Instead, it reframes it: the question changes from "how accurately can we predict position in 72 hours?" to "how quickly can we detect that our current prediction is wrong and correct it?" This is a control systems reframing. The orbit is the plant; TLE updates are noisy sensor measurements; the UKF is the estimator; anomaly detection is the alarm. The system's metric of merit is detection latency, not prediction accuracy.
 
 ### 2. Prior art limitations
 
@@ -77,13 +77,13 @@ ExoAnalytic Solutions operates a network of commercial telescopes focused on geo
 
 #### 2.5 AGI/Ansys STK
 
-Systems Tool Kit (STK) from Ansys (formerly AGI) is the industry standard for orbital simulation and analysis. STK provides high-fidelity propagation, conjunction assessment, coverage analysis, and mission planning. It is an analyst-driven simulation tool, not a continuous monitoring platform. STK does not maintain persistent filter states between analyst sessions, does not autonomously detect TLE-to-TLE inconsistencies, and does not classify anomalies in real time. Using STK for continuous monitoring would require an analyst to manually configure and run analysis scenarios on each new TLE publication — precisely the manual workflow the n-body platform automates.
+Systems Tool Kit (STK) from Ansys (formerly AGI) is the industry standard for orbital simulation and analysis. STK provides high-fidelity propagation, conjunction assessment, coverage analysis, and mission planning. It is an analyst-driven simulation tool, not a continuous monitoring platform. STK does not maintain persistent filter states between analyst sessions, does not autonomously detect TLE-to-TLE inconsistencies, and does not classify anomalies in real time. Using STK for continuous monitoring would require an analyst to manually configure and run analysis scenarios on each new TLE publication — precisely the manual workflow the ne-body platform automates.
 
 #### 2.6 Academic orbit determination
 
-Sequential orbit determination using Kalman or batch least-squares filters has a long academic history (Montenbruck & Gill, Vallado, Tapley et al.). These methods are well understood and routinely applied in precision orbit determination for missions with dedicated tracking assets. The gap is not algorithmic knowledge but operational deployment: academic OD software (GMAT, Orekit) is configured per-mission, per-analyst, and per-session. It is not deployed as a continuous monitoring service that maintains persistent filter states for a large heterogeneous catalog, classifies anomalies automatically, integrates conjunction screening into the anomaly detection loop, and exposes results to operators in a browser-based visualization within seconds. The n-body platform is not a novel algorithm — the UKF is established. The novel contribution is the operational architecture: the integration of the UKF into a continuous closed-loop monitoring service with automated anomaly classification, conjunction coupling, and real-time operator interface.
+Sequential orbit determination using Kalman or batch least-squares filters has a long academic history (Montenbruck & Gill, Vallado, Tapley et al.). These methods are well understood and routinely applied in precision orbit determination for missions with dedicated tracking assets. The gap is not algorithmic knowledge but operational deployment: academic OD software (GMAT, Orekit) is configured per-mission, per-analyst, and per-session. It is not deployed as a continuous monitoring service that maintains persistent filter states for a large heterogeneous catalog, classifies anomalies automatically, integrates conjunction screening into the anomaly detection loop, and exposes results to operators in a browser-based visualization within seconds. The ne-body platform is not a novel algorithm — the UKF is established. The novel contribution is the operational architecture: the integration of the UKF into a continuous closed-loop monitoring service with automated anomaly classification, conjunction coupling, and real-time operator interface.
 
-### 3. The n-body approach: from prediction accuracy to detection latency
+### 3. The ne-body approach: from prediction accuracy to detection latency
 
 The core architectural reframing is captured in the observation-propagate-validate-recalibrate loop (see `docs/architecture.md` Section 2):
 
@@ -397,7 +397,7 @@ These two events constitute the first multi-event autonomous real-world validati
 
 The maneuver injection script (`scripts/seed_maneuver.py --object 25544 --delta-v 5.0 --trigger`) applies a 5.0 m/s along-track delta-V to the ISS TLE, inserts the synthetic TLE into the SQLite cache, and triggers a processing cycle. The resulting NIS exceedance is reliably detectable under the current R calibration. The anomaly appears in the browser visualization within 10 seconds of script completion (NF-023). The uncertainty cone widens immediately after recalibration and narrows as subsequent updates converge — the recalibration arc is directly observable in the CesiumJS visualization.
 
-For the demo, this sequence provides the "funding moment" contrast: the n-body system detects and classifies the maneuver autonomously; a static SGP4 propagation from the pre-maneuver TLE continues to extrapolate the pre-maneuver orbit indefinitely with no alert and no residual computation.
+For the demo, this sequence provides the "funding moment" contrast: the ne-body system detects and classifies the maneuver autonomously; a static SGP4 propagation from the pre-maneuver TLE continues to extrapolate the pre-maneuver orbit indefinitely with no alert and no residual computation.
 
 ### 9. Production path
 

@@ -4,7 +4,7 @@ Status: Approved
 
 ## Summary
 
-Create the complete directory structure and stub files for the n-body SSA platform as defined in CLAUDE.md and docs/architecture.md. Every backend Python module gets stub functions with full type annotations and docstrings; every frontend JS module gets exported function shells with JSDoc; dependency manifests are created. All function bodies raise NotImplementedError (Python) or throw Error (JS). This scaffold establishes the contract surface that all subsequent implementation plans build against.
+Create the complete directory structure and stub files for the ne-body SSA platform as defined in CLAUDE.md and docs/architecture.md. Every backend Python module gets stub functions with full type annotations and docstrings; every frontend JS module gets exported function shells with JSDoc; dependency manifests are created. All function bodies raise NotImplementedError (Python) or throw Error (JS). This scaffold establishes the contract surface that all subsequent implementation plans build against.
 
 ## Requirements addressed
 
@@ -570,7 +570,7 @@ Space-Track.org --> ingest.py (fetch_tles, validate_tle, cache_tles)
     - Risk: Low
 
 11. **Create backend/main.py** (`backend/main.py`)
-    - Action: Create FastAPI application with stub endpoints. Module-level docstring must state: "FastAPI application. REST and WebSocket gateway for the n-body SSA platform."
+    - Action: Create FastAPI application with stub endpoints. Module-level docstring must state: "FastAPI application. REST and WebSocket gateway for the ne-body SSA platform."
     - Stub contents:
       ```python
       import datetime
@@ -578,7 +578,7 @@ Space-Track.org --> ingest.py (fetch_tles, validate_tle, cache_tles)
       from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
       app = FastAPI(
-          title="n-body SSA Platform",
+          title="ne-body SSA Platform",
           description="Continuous Monitoring & Prediction Platform for Space Situational Awareness",
           version="0.1.0",
       )
@@ -890,9 +890,9 @@ Space-Track.org --> ingest.py (fetch_tles, validate_tle, cache_tles)
     - Action: Create a minimal package.json. Since C-003 requires no build step and CDN-only dependencies, this file serves as project metadata only. No `dependencies` or `devDependencies` that require npm install for runtime.
       ```json
       {
-        "name": "n-body-frontend",
+        "name": "ne-body-frontend",
         "version": "0.1.0",
-        "description": "Browser frontend for the n-body SSA platform. All runtime dependencies loaded from CDN.",
+        "description": "Browser frontend for the ne-body SSA platform. All runtime dependencies loaded from CDN.",
         "private": true,
         "scripts": {
           "serve": "python3 -m http.server 3000",

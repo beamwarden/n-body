@@ -1,4 +1,4 @@
-"""FastAPI application. REST and WebSocket gateway for the n-body SSA platform.
+"""FastAPI application. REST and WebSocket gateway for the ne-body SSA platform.
 
 Exposes:
   GET /catalog                      — list tracked objects with state summaries
@@ -557,7 +557,7 @@ async def lifespan(app: FastAPI):
         os.environ.get("NBODY_CATALOG_CONFIG") or "data/catalog/catalog.json"
     )
 
-    logger.info("n-body startup: db_path=%s catalog=%s", db_path, catalog_config_path)
+    logger.info("ne-body startup: db_path=%s catalog=%s", db_path, catalog_config_path)
 
     db: sqlite3.Connection = ingest.init_catalog_db(db_path)
     logger.info("Catalog DB initialized.")
@@ -615,7 +615,7 @@ async def lifespan(app: FastAPI):
     # connection opened during startup, preventing thread-affinity errors.
     # Functionally equivalent in production (nothing replaces app.state.db at
     # runtime). Flagged for planner review.
-    logger.info("n-body shutdown: cancelling background tasks.")
+    logger.info("ne-body shutdown: cancelling background tasks.")
     for task in app.state.background_tasks:
         task.cancel()
     await asyncio.gather(*app.state.background_tasks, return_exceptions=True)
@@ -626,7 +626,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="n-body SSA Platform",
+    title="ne-body SSA Platform",
     description="Continuous Monitoring & Prediction Platform for Space Situational Awareness",
     version="0.1.0",
     lifespan=lifespan,
