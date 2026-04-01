@@ -555,6 +555,67 @@ def test_single_exceedance_active_satellite_stays_divergence() -> None:
     assert cursor.fetchone()[0] == anomaly.ANOMALY_DIVERGENCE
 
 
+def test_restart_no_duplicate_alerts() -> None:
+    """Simulated backend restart must not produce duplicate alerts rows.
+
+    Sequence:
+      1. Cycle 1 — cold start (filter initialised, no anomaly).
+      2. Cycle 2 — NIS exceedance on active satellite; provisional alert inserted.
+      3. Simulate restart: clear filter_states (in-memory state lost).
+      4. Re-run cycle 1 (same TLE/epoch as original cold start) — on cold start
+         the epoch guard will not fire (filter_states is empty), so it re-inits.
+         No anomaly is emitted on cold start, so no second INSERT attempt.
+      5. Re-run cycle 2 with the anomaly-triggering TLE — record_anomaly is
+         called again for the same (norad_id, detection_epoch_utc).
+      6. Assert COUNT(*) == 1.
+    """
+    db = _make_in_memory_db()
+    entry = _make_catalog_entry(25544, object_class="active_satellite")
+    filter_states: dict = {}
+
+    tle_record1 = _make_tle_record(25544, "2026-03-28T12:00:00Z")
+    tle_record2 = _make_tle_record(25544, "2026-03-28T12:30:00Z")
+
+    # Cycle 1 — cold start.
+    process_single_object(
+        db=db, entry=entry, norad_id=25544, filter_states=filter_states,
+        tle_record=tle_record1,
+    )
+
+    # Cycle 2 — force NIS exceedance so an alert row is written.
+    with patch("backend.processing.anomaly.classify_anomaly", return_value=anomaly.ANOMALY_DIVERGENCE):
+        process_single_object(
+            db=db, entry=entry, norad_id=25544, filter_states=filter_states,
+            tle_record=tle_record2,
+        )
+
+    # Confirm exactly 1 alert row exists before simulated restart.
+    cursor = db.execute("SELECT COUNT(*) FROM alerts WHERE norad_id=25544")
+    assert cursor.fetchone()[0] == 1
+
+    # Simulate restart: wipe in-memory filter state.
+    filter_states.clear()
+
+    # Re-run cycle 1 (cold start again).
+    process_single_object(
+        db=db, entry=entry, norad_id=25544, filter_states=filter_states,
+        tle_record=tle_record1,
+    )
+
+    # Re-run cycle 2 with the same anomaly-triggering TLE/epoch.
+    with patch("backend.processing.anomaly.classify_anomaly", return_value=anomaly.ANOMALY_DIVERGENCE):
+        process_single_object(
+            db=db, entry=entry, norad_id=25544, filter_states=filter_states,
+            tle_record=tle_record2,
+        )
+
+    # Must still be exactly 1 alert row — INSERT OR IGNORE deduplicates.
+    cursor = db.execute("SELECT COUNT(*) FROM alerts WHERE norad_id=25544")
+    assert cursor.fetchone()[0] == 1, (
+        "Backend restart must not produce duplicate alerts rows for the same epoch"
+    )
+
+
 def test_maneuver_uses_higher_inflation_factor_than_divergence() -> None:
     """Maneuver recalibration inflates covariance 2x more than filter_divergence.
 

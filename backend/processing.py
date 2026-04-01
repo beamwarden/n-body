@@ -421,17 +421,17 @@ def process_single_object(
             anomaly_type=final_type,
         )
 
-        _insert_state_history_row(
-            db=db,
-            norad_id=norad_id,
-            epoch_utc=pending_epoch,
-            state_eci_km=anomaly_ws_message["eci_km"] + anomaly_ws_message["eci_km_s"],
-            covariance_km2=anomaly_ws_message["covariance_diagonal_km2"],
-            nis=pending_nis,
-            confidence=anomaly_ws_message["confidence"],
-            anomaly_type=final_type,
-            message_type=WS_TYPE_ANOMALY,
+        # Update the existing state_history row written in cycle 1 to reflect
+        # the final (possibly upgraded) anomaly_type rather than inserting a
+        # duplicate row for the same pending_epoch.  On a restart the row may
+        # not exist; the UPDATE is a no-op in that case and the WS message is
+        # still emitted for connected clients.
+        pending_epoch_str: str = pending_epoch.strftime("%Y-%m-%dT%H:%M:%SZ")
+        db.execute(
+            "UPDATE state_history SET anomaly_type = ? WHERE norad_id = ? AND epoch_utc = ? AND message_type = ?",
+            (final_type, norad_id, pending_epoch_str, WS_TYPE_ANOMALY),
         )
+        db.commit()
 
         messages.append(anomaly_ws_message)
         messages.append(recal_ws_message)

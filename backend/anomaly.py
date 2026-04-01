@@ -74,6 +74,22 @@ def ensure_alerts_table(db: sqlite3.Connection) -> None:
         ON alerts (norad_id, status)
         """
     )
+    # Migration: remove duplicate (norad_id, detection_epoch_utc) rows that may
+    # exist from prior runs before the unique index was added.  Keep the row
+    # with the highest id so that existing foreign references remain valid.
+    cursor.execute(
+        """
+        DELETE FROM alerts WHERE id NOT IN (
+            SELECT MAX(id) FROM alerts GROUP BY norad_id, detection_epoch_utc
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_alerts_norad_epoch_unique
+        ON alerts (norad_id, detection_epoch_utc)
+        """
+    )
     db.commit()
 
 
@@ -294,7 +310,7 @@ def record_anomaly(
     cursor = db.cursor()
     cursor.execute(
         """
-        INSERT INTO alerts (norad_id, detection_epoch_utc, anomaly_type, nis_value, status)
+        INSERT OR IGNORE INTO alerts (norad_id, detection_epoch_utc, anomaly_type, nis_value, status)
         VALUES (?, ?, ?, ?, 'active')
         """,
         (
@@ -305,7 +321,17 @@ def record_anomaly(
         ),
     )
     db.commit()
-    row_id: int = cursor.lastrowid  # type: ignore[assignment]
+    # rowcount is 0 when INSERT OR IGNORE skips the insert because a unique
+    # constraint conflict was detected.  In that case, fetch and return the id
+    # of the existing row so callers can track it correctly.
+    if cursor.rowcount > 0:
+        row_id: int = cursor.lastrowid  # type: ignore[assignment]
+    else:
+        existing = cursor.execute(
+            "SELECT id FROM alerts WHERE norad_id = ? AND detection_epoch_utc = ?",
+            (norad_id, detection_epoch_utc.isoformat()),
+        ).fetchone()
+        row_id = existing[0]
     return row_id
 
 

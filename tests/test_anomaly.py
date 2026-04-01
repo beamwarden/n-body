@@ -487,3 +487,72 @@ def test_datetime_round_trip_preserves_timezone(
     # Both should be the same instant; verify they compare equal
     assert stored_epoch == epoch
     assert stored_epoch.tzinfo is not None
+
+
+# ---------------------------------------------------------------------------
+# Idempotency / duplicate-guard tests (duplicate anomaly history fix)
+# ---------------------------------------------------------------------------
+
+
+def test_record_anomaly_idempotent_on_duplicate_epoch(
+    db: sqlite3.Connection, utc_epoch: datetime.datetime
+) -> None:
+    """Calling record_anomaly twice with the same (norad_id, detection_epoch_utc)
+    must produce exactly 1 DB row and must return the same row id both times.
+    """
+    row_id_first = record_anomaly(
+        db=db,
+        norad_id=25544,
+        detection_epoch_utc=utc_epoch,
+        anomaly_type=ANOMALY_DIVERGENCE,
+        nis_value=15.0,
+    )
+    row_id_second = record_anomaly(
+        db=db,
+        norad_id=25544,
+        detection_epoch_utc=utc_epoch,
+        anomaly_type=ANOMALY_DIVERGENCE,
+        nis_value=15.0,
+    )
+
+    cursor = db.cursor()
+    cursor.execute(
+        "SELECT COUNT(*) FROM alerts WHERE norad_id = ? AND detection_epoch_utc = ?",
+        (25544, utc_epoch.isoformat()),
+    )
+    count = cursor.fetchone()[0]
+    assert count == 1, f"Expected 1 row, got {count}"
+    assert row_id_first == row_id_second, (
+        f"Expected same row id both calls, got {row_id_first} then {row_id_second}"
+    )
+
+
+def test_record_anomaly_different_epochs_both_inserted(
+    db: sqlite3.Connection, utc_epoch: datetime.datetime
+) -> None:
+    """Two calls with different detection_epoch_utc values must each insert a
+    separate row (regression guard — uniqueness is per epoch, not per norad_id).
+    """
+    epoch_a = utc_epoch
+    epoch_b = utc_epoch + datetime.timedelta(minutes=30)
+
+    row_id_a = record_anomaly(
+        db=db,
+        norad_id=25544,
+        detection_epoch_utc=epoch_a,
+        anomaly_type=ANOMALY_DIVERGENCE,
+        nis_value=15.0,
+    )
+    row_id_b = record_anomaly(
+        db=db,
+        norad_id=25544,
+        detection_epoch_utc=epoch_b,
+        anomaly_type=ANOMALY_DIVERGENCE,
+        nis_value=16.0,
+    )
+
+    cursor = db.cursor()
+    cursor.execute("SELECT COUNT(*) FROM alerts WHERE norad_id = ?", (25544,))
+    count = cursor.fetchone()[0]
+    assert count == 2, f"Expected 2 rows for different epochs, got {count}"
+    assert row_id_a != row_id_b, "Different epochs must produce different row ids"
