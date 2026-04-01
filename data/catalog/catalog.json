@@ -5,13 +5,13 @@
   {"norad_id": 20580, "name": "HST",                      "object_class": "active_satellite"},
 
   {"norad_id": 44235, "name": "STARLINK-24",              "object_class": "active_satellite"},
-  {"norad_id": 44700, "name": "STARLINK-1007",            "object_class": "active_satellite"},
+  {"norad_id": 44236, "name": "STARLINK-25",              "object_class": "active_satellite"},
   {"norad_id": 44914, "name": "STARLINK-1095",            "object_class": "active_satellite"},
   {"norad_id": 45178, "name": "STARLINK-1306",            "object_class": "active_satellite"},
   {"norad_id": 45530, "name": "STARLINK-1571",            "object_class": "active_satellite"},
   {"norad_id": 45706, "name": "STARLINK-1706",            "object_class": "active_satellite"},
   {"norad_id": 45800, "name": "STARLINK-1800",            "object_class": "active_satellite"},
-  {"norad_id": 46010, "name": "STARLINK-1925",            "object_class": "active_satellite"},
+  {"norad_id": 44237, "name": "STARLINK-26",              "object_class": "active_satellite"},
   {"norad_id": 46050, "name": "STARLINK-1965",            "object_class": "active_satellite"},
   {"norad_id": 46075, "name": "STARLINK-1990",            "object_class": "active_satellite"},
 
@@ -30,7 +30,6 @@
   {"norad_id": 51074, "name": "UMBRA-04",                 "object_class": "active_satellite"},
   {"norad_id": 53087, "name": "UMBRA-05",                 "object_class": "active_satellite"},
   {"norad_id": 53088, "name": "UMBRA-06",                 "object_class": "active_satellite"},
-  {"norad_id": 55548, "name": "UMBRA-07",                 "object_class": "active_satellite"},
 
   {"norad_id": 43114, "name": "ICEYE-X1",                 "object_class": "active_satellite"},
   {"norad_id": 46495, "name": "ICEYE-X6",                 "object_class": "active_satellite"},
@@ -43,7 +42,6 @@
   {"norad_id": 52191, "name": "NUSAT-32 (ADA)",           "object_class": "active_satellite"},
   {"norad_id": 52175, "name": "NUSAT-33",                 "object_class": "active_satellite"},
   {"norad_id": 52176, "name": "NUSAT-34",                 "object_class": "active_satellite"},
-  {"norad_id": 53107, "name": "NUSAT-35",                 "object_class": "active_satellite"},
 
   {"norad_id": 43810, "name": "HAWKEYE PATHFINDER 1",     "object_class": "active_satellite"},
   {"norad_id": 43811, "name": "HAWKEYE PATHFINDER 2",     "object_class": "active_satellite"},
@@ -52,14 +50,9 @@
   {"norad_id": 49737, "name": "HAWKEYE CLUSTER 2-2",      "object_class": "active_satellite"},
   {"norad_id": 49738, "name": "HAWKEYE CLUSTER 2-3",      "object_class": "active_satellite"},
 
-  {"norad_id": 46853, "name": "FLOCK 4S-1",               "object_class": "active_satellite"},
-  {"norad_id": 46854, "name": "FLOCK 4S-2",               "object_class": "active_satellite"},
-  {"norad_id": 46855, "name": "FLOCK 4S-3",               "object_class": "active_satellite"},
   {"norad_id": 48897, "name": "FLOCK 4X-1",               "object_class": "active_satellite"},
   {"norad_id": 48898, "name": "FLOCK 4X-2",               "object_class": "active_satellite"},
   {"norad_id": 49808, "name": "FLOCK 4V-1",               "object_class": "active_satellite"},
-  {"norad_id": 49809, "name": "FLOCK 4V-2",               "object_class": "active_satellite"},
-  {"norad_id": 49810, "name": "FLOCK 4V-3",               "object_class": "active_satellite"},
   {"norad_id": 52173, "name": "FLOCK 4Y-1",               "object_class": "active_satellite"},
   {"norad_id": 52174, "name": "FLOCK 4Y-2",               "object_class": "active_satellite"},
 
@@ -74,7 +67,6 @@
   {"norad_id": 49865, "name": "COSMOS 1408 DEB",          "object_class": "debris"},
   {"norad_id": 49866, "name": "COSMOS 1408 DEB",          "object_class": "debris"},
   {"norad_id": 49867, "name": "COSMOS 1408 DEB",          "object_class": "debris"},
-  {"norad_id": 49868, "name": "COSMOS 1408 DEB",          "object_class": "debris"},
   {"norad_id": 49869, "name": "COSMOS 1408 DEB",          "object_class": "debris"},
   {"norad_id": 49870, "name": "COSMOS 1408 DEB",          "object_class": "debris"},
   {"norad_id": 49871, "name": "COSMOS 1408 DEB",          "object_class": "debris"},
@@ -83,7 +75,8 @@
   {"norad_id": 49874, "name": "COSMOS 1408 DEB",          "object_class": "debris"},
   {"norad_id": 49875, "name": "COSMOS 1408 DEB",          "object_class": "debris"},
   {"norad_id": 49876, "name": "COSMOS 1408 DEB",          "object_class": "debris"},
-  {"norad_id": 49877, "name": "COSMOS 1408 DEB",          "object_class": "debris"},
+  {"norad_id": 49878, "name": "COSMOS 1408 DEB",          "object_class": "debris"},
+  {"norad_id": 49879, "name": "COSMOS 1408 DEB",          "object_class": "debris"},
 
   {"norad_id": 38253, "name": "CZ-2D R/B",                "object_class": "rocket_body"},
   {"norad_id": 48275, "name": "CZ-5B R/B (HIGH REENTRY RISK)", "object_class": "rocket_body"},

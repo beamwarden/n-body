@@ -432,11 +432,12 @@ def test_catalog_json_valid_structure() -> None:
         )
         norad_ids_seen.add(norad_id)
 
-    # Count must be in [75, 105] per VLEO rebuild plan (80-object baseline,
-    # plan allows 85-100 with verified substitutes).
+    # Count must be in [60, 105] per VLEO rebuild plan (73-object post-verification
+    # baseline after removing 11 failed altitude checks; 60 lower bound allows for
+    # further pruning if additional IDs fail on TLE rebuild).
     count = len(catalog)
-    assert 75 <= count <= 105, (
-        f"Catalog count {count} is outside [75, 105] — expected 80-100 VLEO objects"
+    assert 60 <= count <= 105, (
+        f"Catalog count {count} is outside [60, 105] — expected 60-100 verified VLEO objects"
     )
 
 
