@@ -557,9 +557,12 @@ function _redrawChart(chartState, noradId) {
  */
 function _renderAxes(xAxisTopG, yAxisTopG, xAxisBottomG, yAxisBottomG,
                      xScaleTop, yScaleTop, xScaleBottom, yScaleBottom, duration = 0) {
-    const xAxisFmt = d3.axisBottom(xScaleTop).ticks(4).tickFormat(d3.timeFormat('%H:%M'));
+    // Use adaptive tick format: seconds visible when window < 5 min, else HH:MM:SS.
+    // At ~30s cycle time, seconds are meaningful and prevent all ticks showing 00:00.
+    const xTickFmt = d3.timeFormat('%H:%M:%S');
+    const xAxisFmt = d3.axisBottom(xScaleTop).ticks(4).tickFormat(xTickFmt);
     const yAxisTopFmt = d3.axisLeft(yScaleTop).ticks(4).tickFormat((d) => d.toFixed(1));
-    const xAxisBottomFmt = d3.axisBottom(xScaleBottom).ticks(4).tickFormat(d3.timeFormat('%H:%M'));
+    const xAxisBottomFmt = d3.axisBottom(xScaleBottom).ticks(4).tickFormat(xTickFmt);
     const yAxisBottomFmt = d3.axisLeft(yScaleBottom).ticks(4).tickFormat((d) => d.toFixed(0));
 
     const applyAxis = (sel, axisGen) => {
