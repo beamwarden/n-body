@@ -561,6 +561,8 @@ export function drawPredictiveTrackWithCone(viewer, forwardTrackPoints) {
                 width: corridorWidth_m,
                 material: Cesium.Color.ORANGE.withAlpha(0.3),
                 cornerType: Cesium.CornerType.ROUNDED,
+                height: 1000,
+                extrudedHeight: 10000,
             },
         });
         _currentConeEntities.push(coneSegEntity);
