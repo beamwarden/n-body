@@ -4,14 +4,14 @@ Orchestrates the full demo narrative: baseline tracking, ASAT debris conjunction
 unannounced Starlink maneuver, ISR asset repositioning, and filter recalibration.
 
 Usage:
-    python scripts/demo.py --act [1|2|3|4|5|all] [--base-url http://localhost:8000]
+    python scripts/demo.py --act [1|2|3|4|5|all] [--base-url http://localhost:8001]
         [--delay-s 5] [--clean]
     python scripts/demo.py --list
 
 Examples:
     python scripts/demo.py --list
     python scripts/demo.py --act all
-    python scripts/demo.py --act 2 --base-url http://localhost:8000
+    python scripts/demo.py --act 2 --base-url http://localhost:8001
     python scripts/demo.py --act all --delay-s 20 --clean
 """
 import argparse
@@ -430,7 +430,7 @@ def _post_trigger_process(base_url: str) -> None:
     """POST to /admin/trigger-process and print [OK] or [ERROR: ...].
 
     Args:
-        base_url: Backend base URL, e.g. 'http://localhost:8000'.
+        base_url: Backend base URL, e.g. 'http://localhost:8001'.
     """
     url: str = f"{base_url.rstrip('/')}/admin/trigger-process"
     try:
@@ -1003,7 +1003,7 @@ def main() -> None:
             "Examples:\n"
             "  python scripts/demo.py --list\n"
             "  python scripts/demo.py --act all\n"
-            "  python scripts/demo.py --act 2 --base-url http://localhost:8000\n"
+            "  python scripts/demo.py --act 2 --base-url http://localhost:8001\n"
             "  python scripts/demo.py --act all --delay-s 20 --clean\n"
         ),
     )
@@ -1021,9 +1021,9 @@ def main() -> None:
     parser.add_argument(
         "--base-url",
         type=str,
-        default="http://localhost:8000",
+        default="http://localhost:8001",
         metavar="URL",
-        help="Backend base URL (default: http://localhost:8000)",
+        help="Backend base URL (default: http://localhost:8001)",
     )
     parser.add_argument(
         "--delay-s",

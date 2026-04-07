@@ -648,7 +648,7 @@ function _seedFromCatalog(catalog) {
  */
 export async function initApp() {
     // 1. Derive backend base URL from window.location (same host, port 8000).
-    backendBaseUrl = window.location.protocol + '//' + window.location.hostname + ':8000';
+    backendBaseUrl = window.location.protocol + '//' + window.location.hostname + ':8001';
 
     // 2. Fetch /config for the Cesium Ion token (resolves TD-018).
     let cesiumIonToken = '';
@@ -703,7 +703,7 @@ export async function initApp() {
     }
 
     // 8. Open the WebSocket connection.
-    connectWebSocket('ws://' + window.location.hostname + ':8000/ws/live');
+    connectWebSocket('ws://' + window.location.hostname + ':8001/ws/live');
 }
 
 // ---------------------------------------------------------------------------

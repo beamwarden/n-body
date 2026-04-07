@@ -444,9 +444,9 @@ def main() -> None:
     parser.add_argument(
         "--server-url",
         type=str,
-        default="http://localhost:8000",
+        default="http://localhost:8001",
         metavar="URL",
-        help="Base URL of the running server (default: http://localhost:8000)",
+        help="Base URL of the running server (default: http://localhost:8001)",
     )
     parser.add_argument(
         "--clear",

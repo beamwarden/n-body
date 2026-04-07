@@ -788,8 +788,8 @@ def main() -> None:
     parser.add_argument(
         "--server-url",
         type=str,
-        default="http://localhost:8000",
-        help="Base URL of the running FastAPI server (default: http://localhost:8000)",
+        default="http://localhost:8001",
+        help="Base URL of the running FastAPI server (default: http://localhost:8001)",
     )
     args = parser.parse_args()
 
