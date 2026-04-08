@@ -1,87 +1,377 @@
 [
-  {"norad_id": 25544, "name": "ISS (ZARYA)",              "object_class": "active_satellite"},
-  {"norad_id": 48274, "name": "CSS (TIANHE)",              "object_class": "active_satellite"},
-
-  {"norad_id": 20580, "name": "HST",                      "object_class": "active_satellite"},
-
-  {"norad_id": 44235, "name": "STARLINK-24",              "object_class": "active_satellite"},
-  {"norad_id": 44236, "name": "STARLINK-25",              "object_class": "active_satellite"},
-  {"norad_id": 44914, "name": "STARLINK-1095",            "object_class": "active_satellite"},
-  {"norad_id": 45178, "name": "STARLINK-1306",            "object_class": "active_satellite"},
-  {"norad_id": 45530, "name": "STARLINK-1571",            "object_class": "active_satellite"},
-  {"norad_id": 45706, "name": "STARLINK-1706",            "object_class": "active_satellite"},
-  {"norad_id": 45800, "name": "STARLINK-1800",            "object_class": "active_satellite"},
-  {"norad_id": 44237, "name": "STARLINK-26",              "object_class": "active_satellite"},
-  {"norad_id": 46050, "name": "STARLINK-1965",            "object_class": "active_satellite"},
-  {"norad_id": 46075, "name": "STARLINK-1990",            "object_class": "active_satellite"},
-
-  {"norad_id": 47474, "name": "BLACKSKY GLOBAL-7",        "object_class": "active_satellite"},
-  {"norad_id": 47475, "name": "BLACKSKY GLOBAL-8",        "object_class": "active_satellite"},
-  {"norad_id": 49432, "name": "BLACKSKY GLOBAL-9",        "object_class": "active_satellite"},
-  {"norad_id": 49433, "name": "BLACKSKY GLOBAL-10",       "object_class": "active_satellite"},
-  {"norad_id": 51067, "name": "BLACKSKY GLOBAL-11",       "object_class": "active_satellite"},
-
-  {"norad_id": 46496, "name": "CAPELLA-2 (SEQUOIA)",      "object_class": "active_satellite"},
-  {"norad_id": 48899, "name": "CAPELLA-5",                "object_class": "active_satellite"},
-  {"norad_id": 48900, "name": "CAPELLA-6",                "object_class": "active_satellite"},
-  {"norad_id": 51069, "name": "CAPELLA-7",                "object_class": "active_satellite"},
-  {"norad_id": 51070, "name": "CAPELLA-8",                "object_class": "active_satellite"},
-
-  {"norad_id": 51074, "name": "UMBRA-04",                 "object_class": "active_satellite"},
-  {"norad_id": 53087, "name": "UMBRA-05",                 "object_class": "active_satellite"},
-  {"norad_id": 53088, "name": "UMBRA-06",                 "object_class": "active_satellite"},
-
-  {"norad_id": 43114, "name": "ICEYE-X1",                 "object_class": "active_satellite"},
-  {"norad_id": 46495, "name": "ICEYE-X6",                 "object_class": "active_satellite"},
-  {"norad_id": 47510, "name": "ICEYE-X7",                 "object_class": "active_satellite"},
-  {"norad_id": 48918, "name": "ICEYE-X9",                 "object_class": "active_satellite"},
-  {"norad_id": 49438, "name": "ICEYE-X11",                "object_class": "active_satellite"},
-  {"norad_id": 51073, "name": "ICEYE-X14",                "object_class": "active_satellite"},
-
-  {"norad_id": 52190, "name": "NUSAT-31 (MARIE)",         "object_class": "active_satellite"},
-  {"norad_id": 52191, "name": "NUSAT-32 (ADA)",           "object_class": "active_satellite"},
-  {"norad_id": 52175, "name": "NUSAT-33",                 "object_class": "active_satellite"},
-  {"norad_id": 52176, "name": "NUSAT-34",                 "object_class": "active_satellite"},
-
-  {"norad_id": 43810, "name": "HAWKEYE PATHFINDER 1",     "object_class": "active_satellite"},
-  {"norad_id": 43811, "name": "HAWKEYE PATHFINDER 2",     "object_class": "active_satellite"},
-  {"norad_id": 43812, "name": "HAWKEYE PATHFINDER 3",     "object_class": "active_satellite"},
-  {"norad_id": 49736, "name": "HAWKEYE CLUSTER 2-1",      "object_class": "active_satellite"},
-  {"norad_id": 49737, "name": "HAWKEYE CLUSTER 2-2",      "object_class": "active_satellite"},
-  {"norad_id": 49738, "name": "HAWKEYE CLUSTER 2-3",      "object_class": "active_satellite"},
-
-  {"norad_id": 48897, "name": "FLOCK 4X-1",               "object_class": "active_satellite"},
-  {"norad_id": 48898, "name": "FLOCK 4X-2",               "object_class": "active_satellite"},
-  {"norad_id": 49808, "name": "FLOCK 4V-1",               "object_class": "active_satellite"},
-  {"norad_id": 52173, "name": "FLOCK 4Y-1",               "object_class": "active_satellite"},
-  {"norad_id": 52174, "name": "FLOCK 4Y-2",               "object_class": "active_satellite"},
-
-  {"norad_id": 44117, "name": "SPACEBEE-8",               "object_class": "active_satellite"},
-  {"norad_id": 44118, "name": "SPACEBEE-9",               "object_class": "active_satellite"},
-  {"norad_id": 47522, "name": "SPACEBEE-88",              "object_class": "active_satellite"},
-  {"norad_id": 47523, "name": "SPACEBEE-89",              "object_class": "active_satellite"},
-  {"norad_id": 47524, "name": "SPACEBEE-90",              "object_class": "active_satellite"},
-
-  {"norad_id": 49863, "name": "COSMOS 1408 DEB",          "object_class": "debris"},
-  {"norad_id": 49864, "name": "COSMOS 1408 DEB",          "object_class": "debris"},
-  {"norad_id": 49865, "name": "COSMOS 1408 DEB",          "object_class": "debris"},
-  {"norad_id": 49866, "name": "COSMOS 1408 DEB",          "object_class": "debris"},
-  {"norad_id": 49867, "name": "COSMOS 1408 DEB",          "object_class": "debris"},
-  {"norad_id": 49869, "name": "COSMOS 1408 DEB",          "object_class": "debris"},
-  {"norad_id": 49870, "name": "COSMOS 1408 DEB",          "object_class": "debris"},
-  {"norad_id": 49871, "name": "COSMOS 1408 DEB",          "object_class": "debris"},
-  {"norad_id": 49872, "name": "COSMOS 1408 DEB",          "object_class": "debris"},
-  {"norad_id": 49873, "name": "COSMOS 1408 DEB",          "object_class": "debris"},
-  {"norad_id": 49874, "name": "COSMOS 1408 DEB",          "object_class": "debris"},
-  {"norad_id": 49875, "name": "COSMOS 1408 DEB",          "object_class": "debris"},
-  {"norad_id": 49876, "name": "COSMOS 1408 DEB",          "object_class": "debris"},
-  {"norad_id": 49878, "name": "COSMOS 1408 DEB",          "object_class": "debris"},
-  {"norad_id": 49879, "name": "COSMOS 1408 DEB",          "object_class": "debris"},
-
-  {"norad_id": 38253, "name": "CZ-2D R/B",                "object_class": "rocket_body"},
-  {"norad_id": 48275, "name": "CZ-5B R/B (HIGH REENTRY RISK)", "object_class": "rocket_body"},
-  {"norad_id": 52765, "name": "CZ-5B R/B (HIGH REENTRY RISK)", "object_class": "rocket_body"},
-  {"norad_id": 54216, "name": "FALCON 9 R/B",             "object_class": "rocket_body"},
-  {"norad_id": 53819, "name": "CZ-2C R/B",                "object_class": "rocket_body"},
-  {"norad_id": 44354, "name": "CZ-4B R/B",                "object_class": "rocket_body"}
+  {
+    "norad_id": 25544,
+    "name": "ISS (ZARYA)",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 48274,
+    "name": "CSS (TIANHE)",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 20580,
+    "name": "HST",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 44235,
+    "name": "STARLINK-24",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 44236,
+    "name": "STARLINK-25",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 44914,
+    "name": "STARLINK-1095",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 45178,
+    "name": "STARLINK-1306",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 45530,
+    "name": "STARLINK-1571",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 45706,
+    "name": "STARLINK-1706",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 45800,
+    "name": "STARLINK-1800",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 44237,
+    "name": "STARLINK-26",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 46050,
+    "name": "STARLINK-1965",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 46075,
+    "name": "STARLINK-1990",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 64157,
+    "name": "STARLINK-34343 (FRAGMENTED)",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 47474,
+    "name": "BLACKSKY GLOBAL-7",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 47475,
+    "name": "BLACKSKY GLOBAL-8",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 49432,
+    "name": "BLACKSKY GLOBAL-9",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 49433,
+    "name": "BLACKSKY GLOBAL-10",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 51067,
+    "name": "BLACKSKY GLOBAL-11",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 46496,
+    "name": "CAPELLA-2 (SEQUOIA)",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 48899,
+    "name": "CAPELLA-5",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 48900,
+    "name": "CAPELLA-6",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 51069,
+    "name": "CAPELLA-7",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 51070,
+    "name": "CAPELLA-8",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 51074,
+    "name": "UMBRA-04",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 53087,
+    "name": "UMBRA-05",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 53088,
+    "name": "UMBRA-06",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 43114,
+    "name": "ICEYE-X1",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 46495,
+    "name": "ICEYE-X6",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 47510,
+    "name": "ICEYE-X7",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 48918,
+    "name": "ICEYE-X9",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 49438,
+    "name": "ICEYE-X11",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 51073,
+    "name": "ICEYE-X14",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 52190,
+    "name": "NUSAT-31 (MARIE)",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 52191,
+    "name": "NUSAT-32 (ADA)",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 52175,
+    "name": "NUSAT-33",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 52176,
+    "name": "NUSAT-34",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 43810,
+    "name": "HAWKEYE PATHFINDER 1",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 43811,
+    "name": "HAWKEYE PATHFINDER 2",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 43812,
+    "name": "HAWKEYE PATHFINDER 3",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 49736,
+    "name": "HAWKEYE CLUSTER 2-1",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 49737,
+    "name": "HAWKEYE CLUSTER 2-2",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 49738,
+    "name": "HAWKEYE CLUSTER 2-3",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 48897,
+    "name": "FLOCK 4X-1",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 48898,
+    "name": "FLOCK 4X-2",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 49808,
+    "name": "FLOCK 4V-1",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 52173,
+    "name": "FLOCK 4Y-1",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 52174,
+    "name": "FLOCK 4Y-2",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 44117,
+    "name": "SPACEBEE-8",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 44118,
+    "name": "SPACEBEE-9",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 47522,
+    "name": "SPACEBEE-88",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 47523,
+    "name": "SPACEBEE-89",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 47524,
+    "name": "SPACEBEE-90",
+    "object_class": "active_satellite"
+  },
+  {
+    "norad_id": 49863,
+    "name": "COSMOS 1408 DEB",
+    "object_class": "debris"
+  },
+  {
+    "norad_id": 49864,
+    "name": "COSMOS 1408 DEB",
+    "object_class": "debris"
+  },
+  {
+    "norad_id": 49865,
+    "name": "COSMOS 1408 DEB",
+    "object_class": "debris"
+  },
+  {
+    "norad_id": 49866,
+    "name": "COSMOS 1408 DEB",
+    "object_class": "debris"
+  },
+  {
+    "norad_id": 49867,
+    "name": "COSMOS 1408 DEB",
+    "object_class": "debris"
+  },
+  {
+    "norad_id": 49869,
+    "name": "COSMOS 1408 DEB",
+    "object_class": "debris"
+  },
+  {
+    "norad_id": 49870,
+    "name": "COSMOS 1408 DEB",
+    "object_class": "debris"
+  },
+  {
+    "norad_id": 49871,
+    "name": "COSMOS 1408 DEB",
+    "object_class": "debris"
+  },
+  {
+    "norad_id": 49872,
+    "name": "COSMOS 1408 DEB",
+    "object_class": "debris"
+  },
+  {
+    "norad_id": 49873,
+    "name": "COSMOS 1408 DEB",
+    "object_class": "debris"
+  },
+  {
+    "norad_id": 49874,
+    "name": "COSMOS 1408 DEB",
+    "object_class": "debris"
+  },
+  {
+    "norad_id": 49875,
+    "name": "COSMOS 1408 DEB",
+    "object_class": "debris"
+  },
+  {
+    "norad_id": 49876,
+    "name": "COSMOS 1408 DEB",
+    "object_class": "debris"
+  },
+  {
+    "norad_id": 49878,
+    "name": "COSMOS 1408 DEB",
+    "object_class": "debris"
+  },
+  {
+    "norad_id": 49879,
+    "name": "COSMOS 1408 DEB",
+    "object_class": "debris"
+  },
+  {
+    "norad_id": 38253,
+    "name": "CZ-2D R/B",
+    "object_class": "rocket_body"
+  },
+  {
+    "norad_id": 48275,
+    "name": "CZ-5B R/B (HIGH REENTRY RISK)",
+    "object_class": "rocket_body"
+  },
+  {
+    "norad_id": 52765,
+    "name": "CZ-5B R/B (HIGH REENTRY RISK)",
+    "object_class": "rocket_body"
+  },
+  {
+    "norad_id": 54216,
+    "name": "FALCON 9 R/B",
+    "object_class": "rocket_body"
+  },
+  {
+    "norad_id": 53819,
+    "name": "CZ-2C R/B",
+    "object_class": "rocket_body"
+  },
+  {
+    "norad_id": 44354,
+    "name": "CZ-4B R/B",
+    "object_class": "rocket_body"
+  },
+  {
+    "norad_id": 99999,
+    "name": "THREAT-SIM",
+    "object_class": "debris"
+  }
 ]
