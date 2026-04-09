@@ -1,15 +1,15 @@
 # ne-body: System Architecture Document
-**Version 0.1 — POC**
-**Project:** Continuous Monitoring & Prediction Platform for Space Situational Awareness
+**Version 0.1 — Proof of Concept (POC)**
+**Project:** Continuous Monitoring & Prediction Platform for Space Situational Awareness (SSA)
 **Status:** Draft — for funding review
 
 ---
 
 ## 1. Purpose and scope
 
-This document describes the architecture of the ne-body proof-of-concept system. It covers the data flow from TLE ingestion through orbital propagation, Kalman filter state estimation, anomaly detection, and browser-based visualization.
+This document describes the architecture of the ne-body proof-of-concept system. It covers the data flow from Two-Line Element (TLE) ingestion through orbital propagation, Kalman filter state estimation, anomaly detection, and browser-based visualization.
 
-The POC scope is intentionally constrained: a single-node Python backend, a CDN-served browser frontend, and Space-Track.org as the sole data source. The architecture is designed so that each component can be replaced or scaled independently as the platform matures toward production.
+The POC scope is intentionally constrained: a single-node Python backend, a Content Delivery Network (CDN)-served browser frontend, and Space-Track.org as the sole data source. The architecture is designed so that each component can be replaced or scaled independently as the platform matures toward production.
 
 ---
 
@@ -39,7 +39,7 @@ Is residual within expected noise bounds (NIS test)?
 Updated state estimate → propagate to next expected observation
 ```
 
-Every new TLE update is both a data point and a validation of the previous prediction cycle. The system is always either confirming its model or correcting it.
+Every new TLE update is both a data point and a validation of the previous prediction cycle. The system is always either confirming its model or correcting it. The Normalized Innovation Squared (NIS) test referenced above is defined formally in section 3.3.
 
 ---
 
@@ -47,7 +47,7 @@ Every new TLE update is both a data point and a validation of the previous predi
 
 ### 3.1 TLE ingest service (`backend/ingest.py`)
 
-**Purpose:** Sole interface to Space-Track.org. Polls the API on a schedule, validates response structure, caches locally.
+**Purpose:** Sole interface to Space-Track.org. Polls the Application Programming Interface (API) on a schedule, validates response structure, caches locally.
 
 **Behavior:**
 - Polls every 30 minutes (Space-Track rate limit compliant)
@@ -63,13 +63,13 @@ Every new TLE update is both a data point and a validation of the previous predi
 
 ### 3.2 Propagation engine (`backend/propagator.py`)
 
-**Purpose:** Convert TLE elements into ECI state vectors at arbitrary epochs.
+**Purpose:** Convert TLE elements into Earth-Centered Inertial (ECI) state vectors at arbitrary epochs.
 
 **Implementation:** Python `sgp4` library (Vallado implementation). For POC objects in low Earth orbit, SGP4 is sufficient. The module interface accepts a TLE and a target epoch and returns position and velocity in ECI kilometers and km/s.
 
 **Design note:** The propagator is stateless. It takes inputs and returns a state vector; it holds no memory between calls. This makes it trivially testable and replaceable. A higher-fidelity numerical integrator (e.g., RK4 with J2/J3/drag force models) can be substituted at this interface with no changes to the rest of the system.
 
-**Coordinate frame:** All outputs are ECI J2000. The propagator never outputs ECEF or geodetic coordinates — conversion is the responsibility of the API layer.
+**Coordinate frame:** All outputs are ECI J2000. The propagator never outputs Earth-Centered Earth-Fixed (ECEF) or geodetic coordinates — conversion is the responsibility of the API layer.
 
 ---
 
@@ -77,21 +77,21 @@ Every new TLE update is both a data point and a validation of the previous predi
 
 **Purpose:** Maintain a probabilistic state estimate for each tracked object across time. This is the architectural heart of the platform.
 
-**Implementation:** Unscented Kalman Filter (UKF) via FilterPy. The UKF is chosen over the simpler Extended Kalman Filter because the SGP4 measurement model is nonlinear and the EKF's first-order linearization introduces systematic error that accumulates over time.
+**Implementation:** Unscented Kalman Filter (UKF) via FilterPy. The UKF is chosen over the simpler Extended Kalman Filter (EKF) because the SGP4 measurement model is nonlinear and the EKF's first-order linearization introduces systematic error that accumulates over time.
 
 **State vector:** `[x, y, z, vx, vy, vz]` — position and velocity in ECI, 6-dimensional.
 
-**Process model:** SGP4 propagation from one observation epoch to the next. The process noise matrix `Q` represents unmodeled forces (drag uncertainty, SRP, maneuver probability). For POC, `Q` is hand-tuned per object class (debris vs. active satellite).
+**Process model:** SGP4 propagation from one observation epoch to the next. The process noise matrix `Q` represents unmodeled forces (drag uncertainty, solar radiation pressure (SRP), maneuver probability). For POC, `Q` is hand-tuned per object class (debris vs. active satellite).
 
 **Measurement model:** TLE-derived state vector is treated as a noisy observation. Measurement noise matrix `R` reflects TLE accuracy class (typically 100m–1km position uncertainty for publicly available TLEs).
 
 **Filter update cycle:**
-1. New TLE arrives for object with NORAD ID `n`
+1. New TLE arrives for object with North American Aerospace Defense Command (NORAD) ID `n`
 2. Propagate current state estimate from last update epoch to new TLE epoch (predict step)
 3. Convert TLE to ECI state vector via propagator
 4. Compute innovation (residual): `y = z_observed − z_predicted`
 5. Compute NIS: `NIS = y^T * S^{-1} * y` where S is innovation covariance
-6. If NIS exceeds chi-squared threshold (p=0.05, 6 dof): flag anomaly, trigger recalibration
+6. If NIS exceeds chi-squared threshold (p=0.05, 6 degrees of freedom (dof)): flag anomaly, trigger recalibration
 7. Execute UKF update step; store updated state and covariance
 8. Emit state update event to API layer
 
@@ -153,7 +153,7 @@ Every new TLE update is both a data point and a validation of the previous predi
 - Uncertainty ellipsoids: rendered as translucent ellipsoid entities scaled to 3σ from covariance diagonal
 - Anomaly highlight: object flashes and ellipsoid turns amber when anomaly fires
 
-**CZML update strategy:** The frontend maintains a CZML data source that is patched with each incoming WebSocket state update. CesiumJS handles interpolation between updates.
+**CZML update strategy:** The frontend maintains a Cesium Language (CZML) data source that is patched with each incoming WebSocket state update. CesiumJS handles interpolation between updates.
 
 #### 3.6.2 Residual timeline (`frontend/src/residuals.js`)
 
@@ -177,6 +177,8 @@ Every new TLE update is both a data point and a validation of the previous predi
 ---
 
 ## 4. Data flow diagram
+
+The diagram below uses Hypertext Transfer Protocol Secure (HTTPS) to Space-Track.org and a JavaScript Object Notation (JSON) stream to the browser.
 
 ```
 Space-Track.org
@@ -221,7 +223,7 @@ Space-Track.org
 
 ## 5. Deployment (POC)
 
-The POC runs entirely on a single developer machine or a small cloud VM (2 vCPU, 4 GB RAM is sufficient for 50 objects at 30-minute update intervals).
+The POC runs entirely on a single developer machine or a small cloud virtual machine (2 vCPU, 4 GB Random Access Memory (RAM) is sufficient for 50 objects at 30-minute update intervals).
 
 **Startup sequence:**
 ```bash
@@ -283,5 +285,5 @@ The POC architecture is deliberately simple. Each component maps to a production
 - All Space-Track credentials in environment variables, never committed
 - CesiumJS Ion token scoped to the specific asset set — rotate before any public presentation
 - No classified data in this system. All data sources are unclassified, publicly releasable
-- ITAR note: Space-Track data export is controlled. Do not automate redistribution of raw TLE data to third parties without reviewing Space-Track terms
-- For any DoD demo environment: confirm network connectivity to Space-Track.org is permitted, or pre-cache TLEs on an air-gap-compatible device
+- International Traffic in Arms Regulations (ITAR) note: Space-Track data export is controlled. Do not automate redistribution of raw TLE data to third parties without reviewing Space-Track terms
+- For any Department of Defense (DoD) demo environment: confirm network connectivity to Space-Track.org is permitted, or pre-cache TLEs on an air-gap-compatible device
