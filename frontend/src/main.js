@@ -8,6 +8,8 @@
 import { initGlobe, updateSatellitePosition, updateUncertaintyEllipsoid, highlightAnomaly, setupSelectionHandler, drawHistoricalTrack, drawPredictiveTrackWithCone, clearTrackAndCone, applyConjunctionRisk, clearConjunctionRisk, getConjunctionRiskMap, getLastConjunctionMessage } from './globe.js';
 import { initResidualChart, appendResidualDataPoint, selectObject, addAnomalyMarker } from './residuals.js';
 import { initAlertPanel, addAlert, updateAlertStatus, updateAlertConjunctions, seedFromCatalog as alertSeedFromCatalog } from './alerts.js';
+import { initAlertSound, triggerAlertSound, setAlertSoundMuted } from './alertsound.js';
+import { initAlertFlash, triggerAlertFlash } from './alertflash.js';
 
 // ---------------------------------------------------------------------------
 // Module-level state (step 7)
@@ -21,6 +23,9 @@ let chartState = null;
 
 /** @type {Object|null} Panel state from initAlertPanel */
 let panelState = null;
+
+/** @type {boolean} Current mute state for the alarm sound. */
+let _soundMuted = false;
 
 /** @type {number|null} Currently selected NORAD ID */
 let selectedNoradId = null;
@@ -140,6 +145,15 @@ export function routeMessage(message) {
                 });
             });
         }
+        // Obtrusive alerting: audio alarm + fullscreen flash for live anomaly messages.
+        // triggerAlertSound() is debounced internally (2s cooldown).
+        // triggerAlertFlash() resets if the overlay is already visible.
+        // These are ONLY called here in routeMessage(), never in the reconnect seed
+        // path (which calls addAlert() directly), so historical alerts do not fire.
+        triggerAlertSound();
+        const _flashObjName = nameMap.get(norad_id) || String(norad_id);
+        triggerAlertFlash(_flashObjName, message.anomaly_type || 'unknown');
+
         // Step 8: Add anomaly marker to residual chart at the anomaly epoch.
         if (chartState) {
             addAnomalyMarker(chartState, norad_id, message.epoch_utc, message.anomaly_type);
@@ -672,6 +686,22 @@ export async function initApp() {
 
     // 5. Initialize anomaly alert panel.
     panelState = initAlertPanel('alert-panel');
+
+    // 5a. Initialize audio alarm and visual flash overlay.
+    initAlertSound();
+    initAlertFlash();
+
+    // 5b. Wire mute toggle button.
+    const muteBtn = document.getElementById('mute-toggle');
+    if (muteBtn) {
+        muteBtn.addEventListener('click', () => {
+            _soundMuted = !_soundMuted;
+            setAlertSoundMuted(_soundMuted);
+            muteBtn.textContent = _soundMuted ? '\uD83D\uDD07 UNMUTE' : '\uD83D\uDD14 MUTE';
+        });
+        // Sound starts ON; button shows action to take (mute it).
+        muteBtn.textContent = '\uD83D\uDD14 MUTE';
+    }
 
     // 6. Wire globe click selection to residuals, alerts, and info panel (F-056).
     // Step 15: _showObjectInfoPanel called here alongside selectObject.

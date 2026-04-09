@@ -251,10 +251,72 @@
             transition: opacity 0.6s ease-out;
             z-index: 50;
         }
+
+        /* Mute toggle button — top-right of header */
+        #mute-toggle {
+            float: right;
+            background: none;
+            border: 1px solid #444;
+            color: #888;
+            font-family: monospace;
+            font-size: 13px;
+            padding: 2px 10px;
+            cursor: pointer;
+            border-radius: 3px;
+            margin-top: 2px;
+        }
+        #mute-toggle:hover {
+            color: #ccc;
+            border-color: #666;
+        }
+
+        /* Fullscreen anomaly flash overlay */
+        #anomaly-flash-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 9998;
+            background: radial-gradient(ellipse at center, rgba(180, 0, 0, 0.35) 0%, rgba(120, 0, 0, 0.55) 100%);
+            pointer-events: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .flash-object-name {
+            font-size: 48px;
+            font-weight: bold;
+            color: #ffffff;
+            text-shadow: 0 0 20px #ff0000, 0 0 40px #ff0000;
+            font-family: monospace;
+            letter-spacing: 0.05em;
+            max-width: 80vw;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+        .flash-anomaly-type {
+            font-size: 28px;
+            font-weight: bold;
+            text-transform: uppercase;
+            margin-top: 8px;
+            font-family: monospace;
+            letter-spacing: 0.08em;
+            color: #ffcccc;
+        }
+        /* Anomaly-type-specific colors — matches .alert-type-badge palette */
+        .flash-anomaly-type.maneuver         { color: #ffcccc; }
+        .flash-anomaly-type.drag_anomaly     { color: #ffe0cc; }
+        .flash-anomaly-type.filter_divergence { color: #ddaaff; }
     </style>
 </head>
 <body>
-    <div id="header">ne-body SSA Platform — Continuous Monitoring &amp; Prediction</div>
+    <div id="header">
+        <button id="mute-toggle">&#x1F514; UNMUTE</button>
+        ne-body SSA Platform — Continuous Monitoring &amp; Prediction
+    </div>
     <div id="object-info-panel"></div>
     <div id="main-layout">
         <div id="cesium-container"></div>
@@ -262,6 +324,12 @@
             <div id="alert-panel"></div>
             <div id="residual-chart"></div>
         </div>
+    </div>
+
+    <!-- Anomaly flash overlay — direct child of body to escape Cesium stacking context -->
+    <div id="anomaly-flash-overlay">
+        <div class="flash-object-name"></div>
+        <div class="flash-anomaly-type"></div>
     </div>
 
     <!-- Application JS modules (ES2022, loaded as modules) -->
