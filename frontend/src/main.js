@@ -94,12 +94,26 @@ export async function fetchCatalog(baseUrl) {
  * @param {Object} message - Parsed JSON message from backend.
  * @returns {void}
  */
+/** Maximum TLE age in milliseconds before an object is suppressed from the globe. */
+const MAX_TLE_AGE_MS = 28 * 24 * 60 * 60 * 1000;
+
+/**
+ * Returns true if the epoch string is within the 28-day staleness window.
+ * @param {string|null} epochUtc - ISO-8601 UTC string.
+ * @returns {boolean}
+ */
+function _isFreshEpoch(epochUtc) {
+    if (!epochUtc) return false;
+    return (Date.now() - new Date(epochUtc).getTime()) <= MAX_TLE_AGE_MS;
+}
+
 export function routeMessage(message) {
     if (!viewer) return;
 
     const { type, norad_id } = message;
 
     if (type === 'state_update') {
+        if (!_isFreshEpoch(message.epoch_utc)) return;
         updateSatellitePosition(viewer, message);
         updateUncertaintyEllipsoid(
             viewer,
@@ -632,7 +646,8 @@ function _seedFromCatalog(catalog) {
         if (
             entry.eci_km != null &&
             entry.covariance_diagonal_km2 != null &&
-            entry.epoch_utc != null
+            entry.epoch_utc != null &&
+            _isFreshEpoch(entry.last_update_epoch_utc)
         ) {
             const syntheticMsg = {
                 type: 'state_update',
