@@ -23,9 +23,9 @@ replay:
 verify:
 	python scripts/verify_catalog_altitudes.py
 
-# Run the full 5-act demo sequence
+# Run demo sequence. Pass args with: make demo ARGS="--act 3"
 demo:
-	python scripts/demo.py --act all
+	python scripts/demo.py --act all $(ARGS)
 
 # Run tests
 test:
