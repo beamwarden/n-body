@@ -177,7 +177,7 @@ This document defines the functional and non-functional requirements for the ne-
 
 ## 4. Constraints
 
-**C-001** The POC shall use only publicly available, unclassified data sources. Space-Track.org is the sole data source.
+**C-001** The POC shall use only publicly available, unclassified data sources. Space-Track.org is the primary data source. Approved supplemental republishers of US Space Surveillance Network data (e.g., N2YO.com) may be used as fallback TLE sources when Space-Track data is unavailable or stale, provided they are accessed only through `ingest.py` and all data provenance is logged.
 
 **C-002** The POC shall be operable on a single developer machine without cloud infrastructure dependencies (except for the initial Space-Track data pull).
 

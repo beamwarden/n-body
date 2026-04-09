@@ -9,7 +9,7 @@
 
 This document describes the architecture of the ne-body proof-of-concept system. It covers the data flow from Two-Line Element (TLE) ingestion through orbital propagation, Kalman filter state estimation, anomaly detection, and browser-based visualization.
 
-The POC scope is intentionally constrained: a single-node Python backend, a Content Delivery Network (CDN)-served browser frontend, and Space-Track.org as the sole data source. The architecture is designed so that each component can be replaced or scaled independently as the platform matures toward production.
+The POC scope is intentionally constrained: a single-node Python backend, a Content Delivery Network (CDN)-served browser frontend, and Space-Track.org as the primary TLE data source with N2YO.com as an approved supplemental fallback for objects with stale or missing Space-Track data. The architecture is designed so that each component can be replaced or scaled independently as the platform matures toward production.
 
 ---
 
