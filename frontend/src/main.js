@@ -178,6 +178,7 @@ export function routeMessage(message) {
 
     } else if (type === 'recalibration') {
         // recalibration includes an updated state; update position and ellipsoid.
+        if (!_isFreshEpoch(message.epoch_utc)) return;
         updateSatellitePosition(viewer, message);
         updateUncertaintyEllipsoid(
             viewer,
