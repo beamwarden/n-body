@@ -346,6 +346,23 @@ export function highlightAnomaly(viewer, noradId, anomalyType) {
     }, 10000);
 }
 
+/**
+ * Remove a satellite entity from the globe entirely (e.g. stale TLE cleanup).
+ * Also removes the associated uncertainty ellipsoid if present.
+ * @param {Object} viewer - Cesium.Viewer instance.
+ * @param {number} noradId - NORAD ID to remove.
+ */
+export function removeSatelliteEntity(viewer, noradId) {
+    if (entityMap.has(noradId)) {
+        viewer.entities.remove(entityMap.get(noradId));
+        entityMap.delete(noradId);
+    }
+    if (ellipsoidMap.has(noradId)) {
+        viewer.entities.remove(ellipsoidMap.get(noradId));
+        ellipsoidMap.delete(noradId);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Conjunction risk highlighting (plan 2026-03-29-conjunction-risk.md step 8)
 // ---------------------------------------------------------------------------

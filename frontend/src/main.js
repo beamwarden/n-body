@@ -5,7 +5,7 @@
  * alerts modules.
  */
 
-import { initGlobe, updateSatellitePosition, updateUncertaintyEllipsoid, highlightAnomaly, setupSelectionHandler, drawHistoricalTrack, drawPredictiveTrackWithCone, clearTrackAndCone, applyConjunctionRisk, clearConjunctionRisk, getConjunctionRiskMap, getLastConjunctionMessage } from './globe.js';
+import { initGlobe, updateSatellitePosition, updateUncertaintyEllipsoid, highlightAnomaly, setupSelectionHandler, drawHistoricalTrack, drawPredictiveTrackWithCone, clearTrackAndCone, applyConjunctionRisk, clearConjunctionRisk, getConjunctionRiskMap, getLastConjunctionMessage, removeSatelliteEntity } from './globe.js';
 import { initResidualChart, appendResidualDataPoint, selectObject, addAnomalyMarker } from './residuals.js';
 import { initAlertPanel, addAlert, updateAlertStatus, updateAlertConjunctions, seedFromCatalog as alertSeedFromCatalog } from './alerts.js';
 import { initAlertSound, triggerAlertSound, setAlertSoundMuted } from './alertsound.js';
@@ -113,7 +113,10 @@ export function routeMessage(message) {
     const { type, norad_id } = message;
 
     if (type === 'state_update') {
-        if (!_isFreshEpoch(message.epoch_utc)) return;
+        if (!_isFreshEpoch(message.epoch_utc)) {
+            removeSatelliteEntity(viewer, norad_id);
+            return;
+        }
         updateSatellitePosition(viewer, message);
         updateUncertaintyEllipsoid(
             viewer,
@@ -178,7 +181,10 @@ export function routeMessage(message) {
 
     } else if (type === 'recalibration') {
         // recalibration includes an updated state; update position and ellipsoid.
-        if (!_isFreshEpoch(message.epoch_utc)) return;
+        if (!_isFreshEpoch(message.epoch_utc)) {
+            removeSatelliteEntity(viewer, norad_id);
+            return;
+        }
         updateSatellitePosition(viewer, message);
         updateUncertaintyEllipsoid(
             viewer,
