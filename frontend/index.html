@@ -36,12 +36,10 @@
             opacity: 1;
             padding: 8px;
         }
-        #alert-panel { flex: 1; display: flex; flex-direction: column; border-bottom: 1px solid #222; font-size: 14px; min-height: 0; }
+        #alert-panel { flex: 1; display: flex; flex-direction: column; border-bottom: 1px solid #222; font-size: 14px; min-height: 0; overflow: hidden; transition: flex 0.25s ease, max-height 0.25s ease; }
         #alert-panel .alert-header { flex-shrink: 0; cursor: pointer; user-select: none; }
         #alert-panel .alert-header:hover { color: #ddd; }
         .alert-panel-list-wrap { flex: 1; min-height: 0; overflow-y: auto; padding: 0 8px 8px 8px; }
-        #alert-panel.alert-panel-collapsed { flex: 0 0 auto; }
-        #alert-panel.alert-panel-collapsed .alert-panel-list-wrap { display: none; }
         .alert-panel-toggle { float: right; font-size: 12px; color: #555; margin-left: 6px; }
 
         /* Alert panel styles (F-055) */

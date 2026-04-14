@@ -79,7 +79,8 @@ export function initAlertPanel(containerId) {
 export function expandAlertPanel(panelState) {
     if (!panelState || !panelState.collapsed) return;
     panelState.collapsed = false;
-    panelState.containerEl.classList.replace('alert-panel-collapsed', 'alert-panel-expanded');
+    panelState.containerEl.style.flex = '1 1 0';
+    panelState.listEl.parentElement.style.display = '';
     panelState.toggleSpan.textContent = '▲';
 }
 
@@ -88,7 +89,8 @@ function _toggleCollapse(panelState) {
         expandAlertPanel(panelState);
     } else {
         panelState.collapsed = true;
-        panelState.containerEl.classList.replace('alert-panel-expanded', 'alert-panel-collapsed');
+        panelState.containerEl.style.flex = '0 0 auto';
+        panelState.listEl.parentElement.style.display = 'none';
         panelState.toggleSpan.textContent = '▼';
     }
 }
