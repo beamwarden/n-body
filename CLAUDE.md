@@ -2,11 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-# ne-body — Space Situational Awareness Platform
+# ne-body (Near Earth body) — Space Situational Awareness Platform
 
-**ne-body** is a browser-based Continuous Monitoring & Prediction Platform for Space Situational Awareness (SSA). The core concept is a closed-loop system that replaces static long-horizon orbital predictions with a continuous observe → propagate → validate → recalibrate cycle, circumventing the mathematical limitations (Lyapunov instability) of traditional propagation.
+**ne-body** (Near Earth body) is a browser-based Continuous Monitoring & Prediction Platform for Space Situational Awareness (SSA). The core concept is a closed-loop system that replaces static long-horizon orbital predictions with a continuous observe → propagate → validate → recalibrate cycle, circumventing the mathematical limitations (Lyapunov instability) of traditional propagation.
 
-The current deliverable is a **funded proof-of-concept** targeting DoD/Space Force and NASA audiences. It uses public TLE data from Space-Track.org as both propagation input and ground-truth observation, runs a Kalman filter loop to close residuals, and visualizes divergence, anomaly detection, and recalibration in the browser.
+The current deliverable is a **proof-of-concept** targeting DoD/Space Force and NASA audiences. It uses public TLE data from Space-Track.org as both propagation input and ground-truth observation, runs a Kalman filter loop to close residuals, and visualizes divergence, anomaly detection, and recalibration in the browser.
 
 ---
 

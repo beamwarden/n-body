@@ -5,58 +5,52 @@ Altitude cutoff: 600.0 km (hard, no tolerance)
 
  NORAD ID  Name                              Mean Motion    Alt (km)  Status    
 --------------------------------------------------------------------------------
-    25544  ISS (ZARYA)                       15.48695066       420.5  PASS      
+    25544  ISS (ZARYA)                       15.48713693       420.5  PASS      
     48274  CSS (TIANHE)                      15.61804306       382.4  PASS      
-    20580  HST                               15.29849412       476.3  PASS      
+    20580  HST                               15.29860039       476.2  PASS      
     44235  STARLINK-24                       16.46847225       147.7  PASS      
-    44700  STARLINK-1007                     14.09155708       862.3  FAIL      
+    44236  STARLINK-25                       16.42066597       160.3  PASS      
     44914  STARLINK-1095                     16.48760180       142.6  PASS      
     45178  STARLINK-1306                     16.47766170       145.2  PASS      
     45530  STARLINK-1571                     16.48547435       143.2  PASS      
-    45706  STARLINK-1706                     15.67269984       366.7  PASS      
+    45706  STARLINK-1706                     15.67489062       366.1  PASS      
     45800  STARLINK-1800                     16.41843583       160.9  PASS      
-    46010  STARLINK-1925                      9.77154317      2863.7  FAIL      
+    44237  STARLINK-26                       16.40837491       163.6  PASS      
     46050  STARLINK-1965                     16.33666062       182.7  PASS      
-    46075  STARLINK-1990                     15.09702595       537.1  PASS      
-    47474  BLACKSKY GLOBAL-7                 16.35229437       178.5  PASS      
-    47475  BLACKSKY GLOBAL-8                 16.42344232       159.6  PASS      
-    49432  BLACKSKY GLOBAL-9                 15.08836709       539.8  PASS      
-    49433  BLACKSKY GLOBAL-10                15.08833591       539.8  PASS      
-    51067  BLACKSKY GLOBAL-11                16.34440170       180.6  PASS      
-    46496  CAPELLA-2 (SEQUOIA)               15.29797911       476.4  PASS      
+    46075  STARLINK-1990                     15.22236165       499.1  PASS      
+    64157  STARLINK-34343 (FRAGMENTED)               N/A         N/A  NO_TLE    
+    47474  BLACKSKY GLOBAL-1                  1.04099609     34746.5  FAIL      
+    47475  BLACKSKY GLOBAL-2                 16.42344232       159.6  PASS      
+    49432  BLACKSKY GLOBAL-3                 15.08817047       539.8  PASS      
+    49433  BLACKSKY GLOBAL-4                 15.08839925       539.7  PASS      
+    51067  BLACKSKY GLOBAL-5                 16.34440170       180.6  PASS      
+    46496  CAPELLA-2 (SEQUOIA)               15.29827881       476.3  PASS      
     48899  CAPELLA-5                         16.32891676       184.8  PASS      
     48900  CAPELLA-6                         16.40417761       164.7  PASS      
     51069  CAPELLA-7                         16.26925185       200.8  PASS      
     51070  CAPELLA-8                         16.44421868       154.1  PASS      
     51074  UMBRA-04                          16.43820293       155.7  PASS      
     53087  UMBRA-05                          16.44910878       152.8  PASS      
-    53088  UMBRA-06                          15.01260621       563.0  PASS      
-    55548  UMBRA-07                          14.34891468       775.4  FAIL      
+    53088  UMBRA-06                          15.01264740       563.0  PASS      
     43114  ICEYE-X1                          16.45388721       151.5  PASS      
-    46495  ICEYE-X6                          15.28628102       479.9  PASS      
+    46495  ICEYE-X6                          15.28648201       479.9  PASS      
     47510  ICEYE-X7                          16.42888174       158.1  PASS      
-    48918  ICEYE-X9                          15.78316947       335.2  PASS      
-    49438  ICEYE-X11                         15.08855026       539.7  PASS      
+    48918  ICEYE-X9                          15.78509176       334.7  PASS      
+    49438  ICEYE-X11                         15.08851156       539.7  PASS      
     51073  ICEYE-X14                         16.19377976       221.2  PASS      
     52190  NUSAT-31 (MARIE)                  16.46070729       149.7  PASS      
     52191  NUSAT-32 (ADA)                    16.47492065       145.9  PASS      
     52175  NUSAT-33                          16.48365845       143.6  PASS      
     52176  NUSAT-34                          16.43367777       156.9  PASS      
-    53107  NUSAT-35                           6.42110577      5849.1  FAIL      
-    43810  HAWKEYE PATHFINDER 1              15.10162528       535.7  PASS      
-    43811  HAWKEYE PATHFINDER 2              15.08209460       541.7  PASS      
-    43812  HAWKEYE PATHFINDER 3              15.08212204       541.7  PASS      
-    49736  HAWKEYE CLUSTER 2-1               15.08819692       539.8  PASS      
-    49737  HAWKEYE CLUSTER 2-2               15.08833271       539.8  PASS      
-    49738  HAWKEYE CLUSTER 2-3               15.08838120       539.7  PASS      
-    46853  FLOCK 4S-1                         1.69779297     23302.9  FAIL      
-    46854  FLOCK 4S-2                         1.70434466     23226.8  FAIL      
-    46855  FLOCK 4S-3                         1.70400093     23230.7  FAIL      
+    43810  HAWKEYE PATHFINDER 1              15.10169649       535.7  PASS      
+    43811  HAWKEYE PATHFINDER 2              15.08214020       541.7  PASS      
+    43812  HAWKEYE PATHFINDER 3              15.08220281       541.6  PASS      
+    49736  HAWKEYE CLUSTER 2-1               15.08843558       539.7  PASS      
+    49737  HAWKEYE CLUSTER 2-2               15.08839659       539.7  PASS      
+    49738  HAWKEYE CLUSTER 2-3               15.08839524       539.7  PASS      
     48897  FLOCK 4X-1                        16.27485263       199.3  PASS      
     48898  FLOCK 4X-2                        16.43129862       157.5  PASS      
     49808  FLOCK 4V-1                        16.11908521       241.6  PASS      
-    49809  FLOCK 4V-2                         1.70475251     23222.0  FAIL      
-    49810  FLOCK 4V-3                         1.70475612     23222.0  FAIL      
     52173  FLOCK 4Y-1                        16.45790183       150.4  PASS      
     52174  FLOCK 4Y-2                        16.42172300       160.0  PASS      
     44117  SPACEBEE-8                        16.10504132       245.5  PASS      
@@ -69,7 +63,6 @@ Altitude cutoff: 600.0 km (hard, no tolerance)
     49865  COSMOS 1408 DEB                   15.67903596       364.9  PASS      
     49866  COSMOS 1408 DEB                   16.26286365       202.5  PASS      
     49867  COSMOS 1408 DEB                   15.16435343       516.6  PASS      
-    49868  COSMOS 1408 DEB                   14.70855800       658.3  FAIL      
     49869  COSMOS 1408 DEB                   16.29053821       195.1  PASS      
     49870  COSMOS 1408 DEB                   16.38797647       169.0  PASS      
     49871  COSMOS 1408 DEB                   15.15760239       518.7  PASS      
@@ -78,28 +71,25 @@ Altitude cutoff: 600.0 km (hard, no tolerance)
     49874  COSMOS 1408 DEB                   15.84531162       317.6  PASS      
     49875  COSMOS 1408 DEB                   16.32078822       187.0  PASS      
     49876  COSMOS 1408 DEB                   16.23615677       209.8  PASS      
-    49877  COSMOS 1408 DEB                   14.82507711       621.4  FAIL      
+    49878  COSMOS 1408 DEB                   16.01531205       270.2  PASS      
+    49879  COSMOS 1408 DEB                   16.22452289       212.9  PASS      
     38253  CZ-2D R/B                         16.31821813       187.6  PASS      
     48275  CZ-5B R/B (HIGH REENTRY RISK)     16.44362448       154.2  PASS      
     52765  CZ-5B R/B (HIGH REENTRY RISK)     16.41002704       163.1  PASS      
     54216  FALCON 9 R/B                      15.61804306       382.4  PASS      
-    53819  CZ-2C R/B                         15.08835533       539.8  PASS      
+    53819  CZ-2C R/B                         15.08836048       539.8  PASS      
     44354  CZ-4B R/B                         16.32955764       184.6  PASS      
+    99999  THREAT-SIM                        15.48713693       420.5  PASS      
 --------------------------------------------------------------------------------
 
-Summary: total=80  pass=69  fail=11  no_tle=0  error=0
+Summary: total=75  pass=73  fail=1  no_tle=1  error=0
 
-WARNING: 11 object(s) have computed altitude > 600.0 km
+WARNING: The following NORAD IDs have NO cached TLE and MUST be verified
+against Space-Track before this catalog is used in production:
+
+      64157  STARLINK-34343 (FRAGMENTED)
+
+WARNING: 1 object(s) have computed altitude > 600.0 km
 and should be removed from the catalog:
 
-      44700  STARLINK-1007                   862.3 km
-      46010  STARLINK-1925                   2863.7 km
-      55548  UMBRA-07                        775.4 km
-      53107  NUSAT-35                        5849.1 km
-      46853  FLOCK 4S-1                      23302.9 km
-      46854  FLOCK 4S-2                      23226.8 km
-      46855  FLOCK 4S-3                      23230.7 km
-      49809  FLOCK 4V-2                      23222.0 km
-      49810  FLOCK 4V-3                      23222.0 km
-      49868  COSMOS 1408 DEB                 658.3 km
-      49877  COSMOS 1408 DEB                 621.4 km
+      47474  BLACKSKY GLOBAL-1               34746.5 km

@@ -363,6 +363,27 @@ export function removeSatelliteEntity(viewer, noradId) {
     }
 }
 
+/**
+ * Fly the camera to the current position of a tracked satellite.
+ * No-ops silently if the entity is not in the map (stale or unprocessed).
+ *
+ * @param {Cesium.Viewer} viewer
+ * @param {number} noradId
+ */
+export function flyToObject(viewer, noradId) {
+    const entity = entityMap.get(noradId);
+    if (!entity) return;
+    viewer.camera.flyTo({
+        destination: entity.position.getValue(Cesium.JulianDate.now()),
+        orientation: {
+            heading: Cesium.Math.toRadians(0),
+            pitch: Cesium.Math.toRadians(-45),
+            roll: 0,
+        },
+        offset: new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-45), 2000000),
+    });
+}
+
 // ---------------------------------------------------------------------------
 // Conjunction risk highlighting (plan 2026-03-29-conjunction-risk.md step 8)
 // ---------------------------------------------------------------------------
@@ -443,6 +464,16 @@ export function clearConjunctionRisk(viewer, noradIds) {
  */
 export function getConjunctionRiskMap() {
     return conjunctionRiskMap;
+}
+
+/**
+ * Return the number of satellite entities currently rendered on the globe.
+ * Reflects only objects that have been successfully placed via updateSatellitePosition.
+ *
+ * @returns {number} Count of active globe entities.
+ */
+export function getRenderedEntityCount() {
+    return entityMap.size;
 }
 
 /**
@@ -633,10 +664,17 @@ export function setupSelectionHandler(viewer, onSelect) {
             onSelect(null);
             return;
         }
-        // Only handle satellite entities (IDs starting with 'sat-')
-        if (typeof entity.id === 'string' && entity.id.startsWith('sat-')) {
-            const noradId = entity.properties.norad_id.getValue();
-            onSelect(noradId);
+        // Handle both satellite billboard ('sat-NNNNN') and uncertainty ellipsoid
+        // ('ell-NNNNN') entities — ellipsoids are larger click targets and should
+        // also select the underlying satellite.
+        if (typeof entity.id === 'string') {
+            let noradId = null;
+            if (entity.id.startsWith('sat-')) {
+                noradId = parseInt(entity.id.slice(4), 10);
+            } else if (entity.id.startsWith('ell-')) {
+                noradId = parseInt(entity.id.slice(4), 10);
+            }
+            if (noradId !== null && !isNaN(noradId)) onSelect(noradId);
         }
     });
 }

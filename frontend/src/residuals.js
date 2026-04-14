@@ -663,6 +663,19 @@ export function renderNoiseBand(chartState, sigma2Km) {
 }
 
 /**
+ * Force a resize and redraw of the chart for the currently selected object.
+ * Called by main.js after the #residual-chart container transitions from
+ * collapsed to expanded, so D3 recalculates dimensions with the correct height.
+ *
+ * @param {Object} chartState - Chart state from initResidualChart.
+ * @returns {void}
+ */
+export function resizeChart(chartState) {
+    if (!chartState || chartState.selectedNoradId === null) return;
+    _redrawChart(chartState, chartState.selectedNoradId);
+}
+
+/**
  * Update the NIS threshold line to a new chi-squared critical value.
  * Default is 12.592 (p=0.05, 6 dof). Callers may override per-object.
  *

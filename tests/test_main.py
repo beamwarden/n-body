@@ -134,6 +134,7 @@ def _setup_app_state_for_catalog(
                 tle_line1 TEXT NOT NULL,
                 tle_line2 TEXT NOT NULL,
                 fetched_at TEXT NOT NULL,
+                source TEXT NOT NULL DEFAULT 'space_track',
                 UNIQUE(norad_id, epoch_utc)
             )
             """

@@ -185,33 +185,33 @@
     "object_class": "active_satellite"
   },
   {
-    "norad_id": 43810,
-    "name": "HAWKEYE PATHFINDER 1",
+    "norad_id": 43765,
+    "name": "HAWK-A",
     "object_class": "active_satellite"
   },
   {
-    "norad_id": 43811,
-    "name": "HAWKEYE PATHFINDER 2",
+    "norad_id": 43794,
+    "name": "HAWK-B",
     "object_class": "active_satellite"
   },
   {
-    "norad_id": 43812,
-    "name": "HAWKEYE PATHFINDER 3",
+    "norad_id": 43799,
+    "name": "HAWK-C",
     "object_class": "active_satellite"
   },
   {
-    "norad_id": 49736,
-    "name": "HAWKEYE CLUSTER 2-1",
+    "norad_id": 59443,
+    "name": "HAWK-8A",
     "object_class": "active_satellite"
   },
   {
-    "norad_id": 49737,
-    "name": "HAWKEYE CLUSTER 2-2",
+    "norad_id": 59445,
+    "name": "HAWK-8B",
     "object_class": "active_satellite"
   },
   {
-    "norad_id": 49738,
-    "name": "HAWKEYE CLUSTER 2-3",
+    "norad_id": 59449,
+    "name": "HAWK-8C",
     "object_class": "active_satellite"
   },
   {

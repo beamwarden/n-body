@@ -1300,6 +1300,33 @@ async def admin_trigger_process() -> dict:
     return {"processed": processed_count}
 
 
+@app.post("/admin/trigger-ingest")
+async def admin_trigger_ingest() -> dict:
+    """Force-run one TLE ingest cycle for all catalog objects.
+
+    Calls poll_once() immediately, bypassing the 30-minute schedule. Useful
+    during development and demos to populate the TLE cache without waiting
+    for the next scheduled poll.
+
+    Returns:
+        JSON with 'inserted' count of new TLE records written to the cache.
+    """
+    db: sqlite3.Connection = app.state.db
+    catalog_entries: list[dict] = app.state.catalog_entries
+    event_bus: asyncio.Queue = app.state.event_bus
+
+    try:
+        inserted: int = await ingest.poll_once(db, catalog_entries, event_bus=event_bus)
+    except EnvironmentError as exc:
+        raise HTTPException(status_code=503, detail=f"Credential error: {exc}") from exc
+    except Exception as exc:  # noqa: BLE001
+        logger.error("admin_trigger_ingest error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    logger.info("admin_trigger_ingest complete: inserted=%d", inserted)
+    return {"inserted": inserted}
+
+
 # ---------------------------------------------------------------------------
 # Phase 6: WebSocket endpoint
 # ---------------------------------------------------------------------------

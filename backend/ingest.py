@@ -1,12 +1,18 @@
-"""Sole interface to Space-Track.org. No other module may call the Space-Track API.
+"""Sole interface to external TLE data sources. No other module may call Space-Track or N2YO.
 
 Handles authenticated polling, TLE validation, and local SQLite caching.
-All Space-Track credentials are read exclusively from environment variables.
+All credentials are read exclusively from environment variables.
 
-Simulation fidelity note: This module treats each new TLE publication from
-Space-Track.org as a synthetic observation for the ingest->kalman pipeline.
-This is a deliberate POC simulation of the sensor-to-catalog pipeline, not
-a real sensor pipeline. Reviewers should be aware of this distinction.
+Data sources:
+  - Space-Track.org (primary): polled every POLL_INTERVAL_S for all catalog objects.
+  - N2YO (supplemental fallback): consulted per-object when Space-Track returns no TLE
+    or the newest Space-Track TLE epoch is older than N2YO_STALE_THRESHOLD_S (7 days).
+    Requires N2YO_API_KEY environment variable; if unset the fallback is skipped silently.
+
+Simulation fidelity note: This module treats each new TLE publication as a synthetic
+observation for the ingest->kalman pipeline. This is a deliberate POC simulation of
+the sensor-to-catalog pipeline, not a real sensor pipeline. Reviewers should be aware
+of this distinction.
 """
 import asyncio
 import datetime
@@ -29,10 +35,20 @@ _SPACETRACK_TLE_URL: str = (
     "/{{norad_ids}}/orderby/EPOCH desc/limit/1/format/tle"
 )
 
+# N2YO supplemental TLE source (fallback only — Space-Track is primary)
+_N2YO_BASE_URL: str = "https://api.n2yo.com/rest/v1/satellite"
+# Key is appended per-call as &apiKey=<key> — not embedded in the template
+_N2YO_TLE_URL_TEMPLATE: str = f"{_N2YO_BASE_URL}/tle/{{norad_id}}"
+N2YO_MAX_REQUESTS_PER_CYCLE: int = 50
+N2YO_STALE_THRESHOLD_S: int = 7 * 86400  # 7 days in seconds
+
 # Default DB path per resolved open question 2
 _DEFAULT_DB_PATH: str = "data/catalog/tle_cache.db"
 
 logger = logging.getLogger(__name__)
+
+# Module-level flag: log the "N2YO_API_KEY not set" message only once per process.
+_n2yo_key_missing_logged: bool = False
 
 
 def _tle_checksum(line: str) -> int:
@@ -106,7 +122,8 @@ def init_catalog_db(db_path: str) -> sqlite3.Connection:
     """Initialize the SQLite database and create the catalog table if it does not exist.
 
     Creates parent directories if they do not exist. The catalog table schema is:
-        (norad_id INTEGER, epoch_utc TEXT, tle_line1 TEXT, tle_line2 TEXT, fetched_at TEXT)
+        (norad_id INTEGER, epoch_utc TEXT, tle_line1 TEXT, tle_line2 TEXT,
+         fetched_at TEXT, source TEXT)
 
     The combination (norad_id, epoch_utc) is used as a unique key to avoid
     duplicate insertions on repeated polls. F-004.
@@ -133,10 +150,21 @@ def init_catalog_db(db_path: str) -> sqlite3.Connection:
             tle_line1   TEXT    NOT NULL,
             tle_line2   TEXT    NOT NULL,
             fetched_at  TEXT    NOT NULL,
+            source      TEXT    NOT NULL DEFAULT 'space_track',
             UNIQUE(norad_id, epoch_utc)
         )
         """
     )
+
+    # Additive migration: add source column to databases created before this column existed.
+    # Using PRAGMA table_info makes this idempotent; ALTER TABLE ADD COLUMN is safe in SQLite.
+    existing_cols = {row["name"] for row in conn.execute("PRAGMA table_info(tle_catalog)").fetchall()}
+    if "source" not in existing_cols:
+        conn.execute(
+            "ALTER TABLE tle_catalog ADD COLUMN source TEXT NOT NULL DEFAULT 'space_track'"
+        )
+        logger.info("DB migration: added 'source' column to tle_catalog")
+
     conn.commit()
     logger.debug("Catalog DB initialized at %s", db_path)
     return conn
@@ -203,11 +231,12 @@ def cache_tles(
     db: sqlite3.Connection,
     tles: list[dict],
     fetched_at_utc: datetime.datetime,
+    source: str = "space_track",
 ) -> int:
     """Write validated TLEs to the local SQLite catalog table.
 
     Table schema: (norad_id INTEGER, epoch_utc TEXT, tle_line1 TEXT,
-                   tle_line2 TEXT, fetched_at TEXT)
+                   tle_line2 TEXT, fetched_at TEXT, source TEXT)
 
     Rows are inserted with INSERT OR IGNORE to avoid duplicates on
     (norad_id, epoch_utc). F-004.
@@ -218,6 +247,8 @@ def cache_tles(
               'norad_id' (int), 'epoch_utc' (str ISO 8601),
               'tle_line1' (str), 'tle_line2' (str).
         fetched_at_utc: UTC timestamp of the fetch operation. Must be UTC-aware.
+        source: Provenance tag for inserted rows. Defaults to 'space_track'.
+                Use 'n2yo' for TLEs fetched via the N2YO fallback path.
 
     Returns:
         Number of rows actually inserted (ignored duplicates not counted).
@@ -235,8 +266,8 @@ def cache_tles(
         cursor = db.execute(
             """
             INSERT OR IGNORE INTO tle_catalog
-                (norad_id, epoch_utc, tle_line1, tle_line2, fetched_at)
-            VALUES (?, ?, ?, ?, ?)
+                (norad_id, epoch_utc, tle_line1, tle_line2, fetched_at, source)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
                 tle["norad_id"],
@@ -244,12 +275,13 @@ def cache_tles(
                 tle["tle_line1"],
                 tle["tle_line2"],
                 fetched_at_str,
+                source,
             ),
         )
         inserted += cursor.rowcount
 
     db.commit()
-    logger.debug("cache_tles: inserted %d of %d rows", inserted, len(tles))
+    logger.debug("cache_tles: inserted %d of %d rows (source=%s)", inserted, len(tles), source)
     return inserted
 
 
@@ -268,7 +300,7 @@ def get_cached_tles(
 
     Returns:
         List of TLE dicts ordered by epoch_utc ascending. Each dict has
-        keys: 'norad_id', 'epoch_utc', 'tle_line1', 'tle_line2', 'fetched_at'.
+        keys: 'norad_id', 'epoch_utc', 'tle_line1', 'tle_line2', 'fetched_at', 'source'.
 
     Raises:
         ValueError: If since_utc is provided but is not UTC-aware.
@@ -279,7 +311,7 @@ def get_cached_tles(
         since_str = since_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
         cursor = db.execute(
             """
-            SELECT norad_id, epoch_utc, tle_line1, tle_line2, fetched_at
+            SELECT norad_id, epoch_utc, tle_line1, tle_line2, fetched_at, source
             FROM tle_catalog
             WHERE norad_id = ? AND epoch_utc > ?
             ORDER BY epoch_utc ASC
@@ -289,7 +321,7 @@ def get_cached_tles(
     else:
         cursor = db.execute(
             """
-            SELECT norad_id, epoch_utc, tle_line1, tle_line2, fetched_at
+            SELECT norad_id, epoch_utc, tle_line1, tle_line2, fetched_at, source
             FROM tle_catalog
             WHERE norad_id = ?
             ORDER BY epoch_utc ASC
@@ -313,11 +345,11 @@ def get_latest_tle(db: sqlite3.Connection, norad_id: int) -> Optional[dict]:
 
     Returns:
         TLE dict with keys 'norad_id', 'epoch_utc', 'tle_line1', 'tle_line2',
-        'fetched_at', or None if no cached data exists for this NORAD ID.
+        'fetched_at', 'source', or None if no cached data exists for this NORAD ID.
     """
     cursor = db.execute(
         """
-        SELECT norad_id, epoch_utc, tle_line1, tle_line2, fetched_at
+        SELECT norad_id, epoch_utc, tle_line1, tle_line2, fetched_at, source
         FROM tle_catalog
         WHERE norad_id = ?
         ORDER BY epoch_utc DESC
@@ -557,6 +589,199 @@ def _parse_tle_epoch_utc(tle_line1: str) -> str:
     return epoch_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+async def fetch_tle_n2yo(
+    norad_id: int,
+    api_key: str,
+    client: httpx.AsyncClient,
+) -> Optional[dict]:
+    """Fetch a single TLE from N2YO for the given NORAD ID.
+
+    N2YO is a supplemental fallback source only. The returned dict has the same
+    shape as entries from fetch_tles() so it can be passed directly to cache_tles().
+
+    The API key is appended to the URL as &apiKey=<key> (N2YO's documented format).
+    The key is redacted in all log messages (replaced with ***).
+
+    Args:
+        norad_id: NORAD catalog ID to fetch.
+        api_key: N2YO API key (read from N2YO_API_KEY env var by the caller).
+        client: An httpx.AsyncClient to use for the request. The caller controls
+                connection reuse; tests can inject a mock via httpx.MockTransport.
+
+    Returns:
+        Dict with keys 'norad_id' (int), 'epoch_utc' (str ISO 8601),
+        'tle_line1' (str), 'tle_line2' (str) on success.
+        None on any failure (network error, non-2xx status, missing fields,
+        checksum failure, NORAD ID mismatch). Never raises. F-003, NF-010.
+    """
+    url = f"{_N2YO_TLE_URL_TEMPLATE.format(norad_id=norad_id)}&apiKey={api_key}"
+    redacted_url = f"{_N2YO_TLE_URL_TEMPLATE.format(norad_id=norad_id)}&apiKey=***"
+
+    call_time_utc = datetime.datetime.now(datetime.timezone.utc)
+    logger.info(
+        "F-006 N2YO_API_CALL timestamp=%s endpoint=%s norad_id=%d",
+        call_time_utc.isoformat(),
+        redacted_url,
+        norad_id,
+    )
+
+    try:
+        response = await client.get(url)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "N2YO network error for NORAD %d: %s (endpoint=%s)",
+            norad_id,
+            exc,
+            redacted_url,
+        )
+        return None
+
+    logger.info(
+        "F-006 N2YO_API_RESPONSE timestamp=%s endpoint=%s norad_id=%d status=%d",
+        datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        redacted_url,
+        norad_id,
+        response.status_code,
+    )
+
+    if response.status_code != 200:
+        logger.warning(
+            "N2YO returned HTTP %d for NORAD %d (endpoint=%s)",
+            response.status_code,
+            norad_id,
+            redacted_url,
+        )
+        return None
+
+    try:
+        body = response.json()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("N2YO JSON decode error for NORAD %d: %s", norad_id, exc)
+        return None
+
+    # Validate response structure
+    if "tle" not in body or "info" not in body:
+        logger.warning(
+            "N2YO response missing 'tle' or 'info' key for NORAD %d: keys=%s",
+            norad_id,
+            list(body.keys()),
+        )
+        return None
+
+    tle_field: str = body.get("tle", "")
+    info_block: dict = body.get("info", {})
+
+    if not tle_field:
+        logger.warning("N2YO returned empty 'tle' field for NORAD %d", norad_id)
+        return None
+
+    # Verify the response is for the requested satellite (paranoia check)
+    returned_satid = info_block.get("satid")
+    if returned_satid != norad_id:
+        logger.warning(
+            "N2YO satid mismatch for requested NORAD %d: response satid=%s",
+            norad_id,
+            returned_satid,
+        )
+        return None
+
+    # Split on \r\n or \n — tolerate either line ending
+    raw_lines = [ln.strip() for ln in tle_field.replace("\r\n", "\n").split("\n") if ln.strip()]
+    if len(raw_lines) != 2:
+        logger.warning(
+            "N2YO 'tle' field did not split into exactly 2 lines for NORAD %d: got %d",
+            norad_id,
+            len(raw_lines),
+        )
+        return None
+
+    line1, line2 = raw_lines[0], raw_lines[1]
+
+    if not validate_tle(line1, line2):
+        logger.warning("N2YO TLE failed checksum validation for NORAD %d", norad_id)
+        return None
+
+    try:
+        epoch_utc_str = _parse_tle_epoch_utc(line1)
+    except ValueError as exc:
+        logger.warning("N2YO TLE epoch parse error for NORAD %d: %s", norad_id, exc)
+        return None
+
+    return {
+        "norad_id": norad_id,
+        "epoch_utc": epoch_utc_str,
+        "tle_line1": line1,
+        "tle_line2": line2,
+    }
+
+
+def _select_n2yo_fallback_ids(
+    db: sqlite3.Connection,
+    norad_ids: list[int],
+    stale_threshold_s: int,
+    max_ids: int,
+    now_utc: datetime.datetime,
+) -> list[int]:
+    """Select NORAD IDs from the catalog that need a supplemental N2YO fetch.
+
+    An ID is selected if:
+    - No TLE exists in tle_catalog for it (gap), OR
+    - The most recent TLE epoch is older than now_utc - stale_threshold_s.
+
+    Results are ordered oldest-first (most-stale objects refreshed first when
+    the max_ids cap bites). Catalog ordering would be arbitrary; oldest-first
+    is better for demo reproducibility and correctness.
+
+    Args:
+        db: Open SQLite connection.
+        norad_ids: Full list of NORAD IDs from the catalog config.
+        stale_threshold_s: Age threshold in seconds. TLEs older than this are stale.
+        max_ids: Maximum number of IDs to return. Caps output to this count.
+        now_utc: Current UTC time (UTC-aware datetime). Used for staleness calculation.
+
+    Returns:
+        List of NORAD IDs needing an N2YO fetch, oldest-first, capped at max_ids.
+    """
+    stale_cutoff = now_utc - datetime.timedelta(seconds=stale_threshold_s)
+
+    # Collect (norad_id, epoch_utc_or_None) pairs, sorted oldest-first
+    candidates: list[tuple[int, Optional[datetime.datetime]]] = []
+
+    for nid in norad_ids:
+        row = get_latest_tle(db, nid)
+        if row is None:
+            # No TLE at all — always include. Use epoch of epoch_min for sort ordering.
+            candidates.append((nid, None))
+        else:
+            try:
+                epoch_dt = datetime.datetime.strptime(
+                    row["epoch_utc"], "%Y-%m-%dT%H:%M:%SZ"
+                ).replace(tzinfo=datetime.timezone.utc)
+            except ValueError:
+                # Unparseable epoch — treat as missing
+                logger.warning(
+                    "_select_n2yo_fallback_ids: could not parse epoch_utc=%r for NORAD %d",
+                    row["epoch_utc"],
+                    nid,
+                )
+                candidates.append((nid, None))
+                continue
+
+            if epoch_dt < stale_cutoff:
+                candidates.append((nid, epoch_dt))
+            # else: fresh — skip
+
+    # Sort: None epochs (no TLE at all) go first, then oldest epoch first
+    def _sort_key(item: tuple[int, Optional[datetime.datetime]]) -> datetime.datetime:
+        if item[1] is None:
+            return datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
+        return item[1]
+
+    candidates.sort(key=_sort_key)
+
+    return [nid for nid, _ in candidates[:max_ids]]
+
+
 async def poll_once(
     db: sqlite3.Connection,
     catalog_entries: list[dict],
@@ -570,8 +795,14 @@ async def poll_once(
     2. Fetch TLEs for configured catalog objects (F-001, F-005)
     3. Validate each TLE checksum (F-003)
     4. Cache new records to SQLite (F-004)
-    5. Emit a catalog_update event on the event bus when new TLEs arrive (arch 3.1)
-    6. Log all API calls (F-006)
+    5. Optionally supplement missing/stale TLEs from N2YO (if N2YO_API_KEY is set)
+    6. Emit a catalog_update event on the event bus when new TLEs arrive (arch 3.1)
+    7. Log all API calls (F-006)
+
+    N2YO fallback: After the Space-Track fetch, objects with no TLE or a TLE epoch
+    older than N2YO_STALE_THRESHOLD_S are queried individually via N2YO. This
+    block is wrapped in a broad try/except so N2YO failures never interrupt the
+    Space-Track pipeline (NF-010).
 
     Args:
         db: Open SQLite connection to the catalog database.
@@ -583,19 +814,61 @@ async def poll_once(
                                    'timestamp_utc': <str>}.
 
     Returns:
-        Number of new TLE rows inserted into the cache.
+        Number of new TLE rows inserted into the cache (both sources combined).
 
     Raises:
-        EnvironmentError: If credentials are missing (from authenticate()).
+        EnvironmentError: If Space-Track credentials are missing (from authenticate()).
         httpx.HTTPStatusError: If any Space-Track request fails.
     """
+    global _n2yo_key_missing_logged
+
     norad_ids = [int(entry["norad_id"]) for entry in catalog_entries]
 
     session_cookie = await authenticate()
     tles = await fetch_tles(norad_ids, session_cookie)
 
     fetched_at_utc = datetime.datetime.now(datetime.timezone.utc)
-    inserted = cache_tles(db, tles, fetched_at_utc)
+    st_inserted = cache_tles(db, tles, fetched_at_utc, source="space_track")
+    n2yo_inserted = 0
+
+    # --- N2YO supplemental fallback -------------------------------------------
+    try:
+        api_key = os.environ.get("N2YO_API_KEY")
+        if not api_key:
+            if not _n2yo_key_missing_logged:
+                logger.info("N2YO_API_KEY not set; skipping supplemental N2YO fallback.")
+                _n2yo_key_missing_logged = True
+        else:
+            gap_ids = _select_n2yo_fallback_ids(
+                db,
+                norad_ids,
+                stale_threshold_s=N2YO_STALE_THRESHOLD_S,
+                max_ids=N2YO_MAX_REQUESTS_PER_CYCLE,
+                now_utc=fetched_at_utc,
+            )
+            if gap_ids:
+                n2yo_tles: list[dict] = []
+                async with httpx.AsyncClient(follow_redirects=True) as n2yo_client:
+                    for nid in gap_ids:
+                        result = await fetch_tle_n2yo(nid, api_key, n2yo_client)
+                        if result is not None:
+                            n2yo_tles.append(result)
+                        await asyncio.sleep(0.1)  # polite pacing
+
+                n2yo_inserted = cache_tles(db, n2yo_tles, fetched_at_utc, source="n2yo")
+                fetched_ids = [t["norad_id"] for t in n2yo_tles]
+                logger.info(
+                    "N2YO fallback: fetched %d TLEs for %s",
+                    n2yo_inserted,
+                    fetched_ids,
+                )
+    except Exception as exc:  # noqa: BLE001
+        logger.error(
+            "N2YO fallback block failed (Space-Track inserts are intact): %s", exc
+        )
+    # --------------------------------------------------------------------------
+
+    inserted = st_inserted + n2yo_inserted
 
     if inserted > 0 and event_bus is not None:
         event = {
@@ -607,8 +880,11 @@ async def poll_once(
         logger.debug("Emitted catalog_update event: %s", event)
 
     logger.info(
-        "poll_once complete: %d new TLEs inserted, %d catalog entries, fetched_at=%s",
+        "poll_once complete: %d new TLEs inserted (space_track=%d, n2yo=%d), "
+        "%d catalog entries, fetched_at=%s",
         inserted,
+        st_inserted,
+        n2yo_inserted,
         len(catalog_entries),
         fetched_at_utc.isoformat(),
     )

@@ -1,0 +1,88 @@
+{
+  "schema_version": "1.0",
+  "created_at": "2026-04-14T01:56:51Z",
+  "window_start": "2026-03-28T00:00:00Z",
+  "window_end": "2026-04-13T23:59:59Z",
+  "window_days": 17.0,
+  "source_db": "/Users/jebbaugh/git/n-body/data/catalog/tle_cache.db",
+  "output_db": "/Users/jebbaugh/git/n-body/data/control/control_2026-03-28_2026-04-13.db",
+  "coverage": {
+    "tle_records": 613,
+    "state_history_records": 2077,
+    "alerts": 16,
+    "unique_objects": 75
+  },
+  "key_events": [
+    {
+      "criterion": "deliberate_maneuver",
+      "norad_id": 25544,
+      "name": "ISS (ZARYA)",
+      "object_class": "active_satellite",
+      "event_start_utc": "2026-03-29T02:31:46Z",
+      "event_end_utc": "2026-03-30T22:32:53Z",
+      "peak_nis": 1050.4,
+      "alert_classification": "maneuver",
+      "notes": "Four consecutive maneuver alerts between 02:31\u201302:41 UTC on 2026-03-29 (NIS 904\u20131050), consistent with a documented ISS reboost event. A second filter_divergence at 2026-03-30T03:57 (NIS 722) follows the reboost settling period. Confidence drops to 0.0 during the burst, recovers to 0.944 within one observation cycle."
+    },
+    {
+      "criterion": "high_drag_regime",
+      "norad_id": 46075,
+      "name": "STARLINK-1990",
+      "object_class": "active_satellite",
+      "event_start_utc": "2026-04-09T16:00:01Z",
+      "event_end_utc": "2026-04-10T14:00:01Z",
+      "peak_nis": 261965.4,
+      "alert_classification": "filter_divergence",
+      "notes": "Peak NIS 261,965 \u2014 20,800\u00d7 the chi\u00b2(6, p=0.05) threshold of 12.592. Two back-to-back filter_divergence/maneuver alerts at 16:00 and 20:00 UTC on 2026-04-09. This object sits in a decaying Starlink shell experiencing enhanced solar-driven atmospheric expansion; the TLE-to-TLE state jump exceeds the R=900 km\u00b2 measurement noise floor by orders of magnitude. Analogous to the Cosmos 1408 debris drag regime requested in the spec."
+    },
+    {
+      "criterion": "high_drag_regime_secondary",
+      "norad_id": 45706,
+      "name": "STARLINK-1706",
+      "object_class": "active_satellite",
+      "event_start_utc": "2026-03-28T19:10:36Z",
+      "event_end_utc": "2026-04-13T05:15:19Z",
+      "peak_nis": 2707.6,
+      "alert_classification": "filter_divergence",
+      "notes": "23 NIS exceedances across the full 16-day window. Average NIS 18.83 (above threshold). Provides continuous baseline drag divergence as a complement to STARLINK-1990's acute event. Good for testing filter steady-state behaviour under persistent model mismatch."
+    },
+    {
+      "criterion": "filter_divergence_extreme",
+      "norad_id": 53088,
+      "name": "UMBRA-06",
+      "object_class": "active_satellite",
+      "event_start_utc": "2026-04-09T11:48:55Z",
+      "event_end_utc": "2026-04-10T18:07:13Z",
+      "peak_nis": 126600.3,
+      "alert_classification": "filter_divergence",
+      "notes": "SAR satellite with NIS 126,600 on 2026-04-09. The April 9 multi-object divergence event (STARLINK-1990, STARLINK-1706, UMBRA-06 all spiking within 8 hours) is consistent with a space weather event driving simultaneous atmospheric density enhancement across multiple VLEO shells."
+    },
+    {
+      "criterion": "documented_fragmentation",
+      "norad_id": 64157,
+      "name": "STARLINK-34343 (FRAGMENTED)",
+      "object_class": "active_satellite",
+      "event_start_utc": "2026-04-09T09:16:37Z",
+      "event_end_utc": "2026-04-13T02:48:42Z",
+      "peak_nis": 0.0,
+      "alert_classification": null,
+      "notes": "STARLINK-34343 fragmentation event. 7 TLE epochs from 2026-04-09 to 2026-04-13. Filter NIS stays near 0 because the UKF re-initialises from each new TLE cold \u2014 the filter accepts the post-fragmentation orbit as valid. The fragmentation is documented at the catalog layer (object_class=active_satellite, name includes FRAGMENTED). This tests the filter_divergence catch-all: any attempt to predict the post-fragmentation track from a pre-fragmentation prior would produce extreme NIS. The current behaviour (no prior, fresh init) is correct for the cold-start path."
+    }
+  ],
+  "coverage_gaps": [
+    {
+      "requested": "Cosmos 1408 debris (NORAD 49863\u201349879)",
+      "status": "deorbited",
+      "notes": "All 15 Cosmos 1408 ASAT fragments (Nov 2021 event, ~485 km) have deorbited. Each has a single final TLE from 2021\u20132023 \u2014 no continuous window is possible. High-drag regime is represented in this dataset by STARLINK-1990 (NORAD 46075, peak NIS 261,965) and STARLINK-1706 (NORAD 45706, peak NIS 2,707)."
+    },
+    {
+      "requested": "CZ-5B rocket bodies (NORAD 48275, 52765)",
+      "status": "deorbited",
+      "notes": "CZ-5B R/B (NORAD 48275) deorbited 2021-05-09; CZ-5B R/B (NORAD 52765) deorbited 2025-11-08. Neither is available in the 2026-03-28/2026-04-13 window."
+    }
+  ],
+  "replay_instructions": {
+    "full_window": "python scripts/replay.py --hours 408 --db data/control/control_2026-03-28_2026-04-13.db",
+    "clean_replay": "sqlite3 data/control/control_2026-03-28_2026-04-13.db \"DELETE FROM state_history; DELETE FROM alerts; DELETE FROM sqlite_sequence WHERE name IN ('state_history','alerts');\" && python scripts/replay.py --hours 408 --db data/control/control_2026-03-28_2026-04-13.db"
+  }
+}

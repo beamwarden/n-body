@@ -27,6 +27,14 @@ verify:
 demo:
 	python scripts/demo.py --act all $(ARGS)
 
+# Pull fresh TLEs from Space-Track into cache
+ingest:
+	curl -X POST http://localhost:8001/admin/trigger-ingest
+
+# Run Kalman filter processing on cached TLEs (makes objects appear on globe)
+process:
+	curl -X POST http://localhost:8001/admin/trigger-process
+
 # Run tests
 test:
 	pytest tests/ -v

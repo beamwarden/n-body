@@ -5,8 +5,8 @@
  * alerts modules.
  */
 
-import { initGlobe, updateSatellitePosition, updateUncertaintyEllipsoid, highlightAnomaly, setupSelectionHandler, drawHistoricalTrack, drawPredictiveTrackWithCone, clearTrackAndCone, applyConjunctionRisk, clearConjunctionRisk, getConjunctionRiskMap, getLastConjunctionMessage, removeSatelliteEntity } from './globe.js';
-import { initResidualChart, appendResidualDataPoint, selectObject, addAnomalyMarker } from './residuals.js';
+import { initGlobe, updateSatellitePosition, updateUncertaintyEllipsoid, highlightAnomaly, setupSelectionHandler, drawHistoricalTrack, drawPredictiveTrackWithCone, clearTrackAndCone, applyConjunctionRisk, clearConjunctionRisk, getConjunctionRiskMap, getLastConjunctionMessage, removeSatelliteEntity, flyToObject, getRenderedEntityCount } from './globe.js';
+import { initResidualChart, appendResidualDataPoint, selectObject, addAnomalyMarker, resizeChart } from './residuals.js';
 import { initAlertPanel, addAlert, updateAlertStatus, updateAlertConjunctions, seedFromCatalog as alertSeedFromCatalog } from './alerts.js';
 import { initAlertSound, triggerAlertSound, setAlertSoundMuted } from './alertsound.js';
 import { initAlertFlash, triggerAlertFlash } from './alertflash.js';
@@ -29,6 +29,12 @@ let _soundMuted = false;
 
 /** @type {number|null} Currently selected NORAD ID */
 let selectedNoradId = null;
+
+/** @type {HTMLElement|null} Tracked object counter element */
+let trackedCountEl = null;
+
+/** @type {boolean} Current chart panel visibility state */
+let _chartVisible = false;
 
 /** @type {WebSocket|null} Active WebSocket instance */
 let ws = null;
@@ -114,7 +120,9 @@ export function routeMessage(message) {
 
     if (type === 'state_update') {
         if (!_isFreshEpoch(message.epoch_utc)) {
+            latestStateMap.delete(norad_id);
             removeSatelliteEntity(viewer, norad_id);
+            _updateTrackedCount();
             return;
         }
         updateSatellitePosition(viewer, message);
@@ -130,6 +138,7 @@ export function routeMessage(message) {
         }
         // Step 12: Store latest state for info panel.
         latestStateMap.set(norad_id, message);
+        _updateTrackedCount();
         // Step 10: Resolve any recalibrating alerts when filter returns to normal
         // (anomaly_type === null confirms recalibration cycle is complete — F-034).
         if (message.anomaly_type === null && panelState) {
@@ -157,11 +166,14 @@ export function routeMessage(message) {
                 selectedNoradId = clickedId;
                 if (chartState) selectObject(chartState, clickedId);
                 _showObjectInfoPanel(clickedId);
+                _setChartVisible(true);
+                flyToObject(viewer, clickedId);
                 _fetchAndDrawTrack(clickedId).catch((err) => {
                     console.warn('[main] _fetchAndDrawTrack (alert click) error:', err);
                 });
             });
         }
+        if (norad_id === selectedNoradId) { _setChartVisible(true); }
         // Obtrusive alerting: audio alarm + fullscreen flash for live anomaly messages.
         // triggerAlertSound() is debounced internally (2s cooldown).
         // triggerAlertFlash() resets if the overlay is already visible.
@@ -235,6 +247,11 @@ export function connectWebSocket(url) {
         console.info('[main] WebSocket connected.');
         _reconnectDelay_s = 1;
         _reconnecting = false;
+        const wsStatusEl = document.getElementById('ws-status');
+        if (wsStatusEl) {
+            wsStatusEl.textContent = 'LIVE';
+            wsStatusEl.className = 'ws-status ws-live';
+        }
 
         // NF-012: On reconnect, fetch catalog to re-seed globe and charts (step 27).
         const catalog = await fetchCatalog(backendBaseUrl);
@@ -251,6 +268,8 @@ export function connectWebSocket(url) {
                             selectedNoradId = clickedId;
                             if (chartState) selectObject(chartState, clickedId);
                             _showObjectInfoPanel(clickedId);
+                            _setChartVisible(true);
+                            flyToObject(viewer, clickedId);
                             _fetchAndDrawTrack(clickedId).catch((err) => {
                                 console.warn('[main] _fetchAndDrawTrack (alert seed) error:', err);
                             });
@@ -288,6 +307,53 @@ export function connectWebSocket(url) {
 }
 
 /**
+ * Update the tracked object counter in the header from the number of
+ * satellite entities currently rendered on the globe.
+ * @returns {void}
+ */
+function _updateTrackedCount() {
+    if (trackedCountEl) trackedCountEl.textContent = getRenderedEntityCount() + ' TRACKED';
+}
+
+/**
+ * Return true if the given NORAD ID has any alert in panelState (active, recalibrating, or resolved).
+ * @param {number} noradId - NORAD catalog ID.
+ * @returns {boolean}
+ */
+function _hasActiveAnomaly(noradId) {
+    if (!panelState) return false;
+    for (const [, entry] of panelState.alerts) {
+        if (parseInt(entry.data.norad_id, 10) === noradId &&
+            (entry.status === 'active' || entry.status === 'recalibrating')) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Show or hide the residual chart panel with a CSS transition.
+ * After expansion, calls resizeChart so D3 recalculates dimensions.
+ * @param {boolean} visible - True to expand, false to collapse.
+ * @returns {void}
+ */
+function _setChartVisible(visible) {
+    const chartEl = document.getElementById('residual-chart');
+    if (!chartEl || visible === _chartVisible) return;
+    _chartVisible = visible;
+    if (visible) {
+        chartEl.classList.add('chart-expanded');
+        chartEl.addEventListener('transitionend', function _onExpand(e) {
+            if (e.propertyName !== 'max-height') return;
+            chartEl.removeEventListener('transitionend', _onExpand);
+            if (chartState) resizeChart(chartState);
+        });
+    } else {
+        chartEl.classList.remove('chart-expanded');
+    }
+}
+
+/**
  * Schedule a WebSocket reconnection with exponential backoff and jitter.
  * @param {string} url - WebSocket URL to reconnect to.
  * @returns {void}
@@ -295,6 +361,11 @@ export function connectWebSocket(url) {
 function _scheduleReconnect(url) {
     if (_reconnecting) return;
     _reconnecting = true;
+    const wsStatusEl = document.getElementById('ws-status');
+    if (wsStatusEl) {
+        wsStatusEl.textContent = 'RECONNECTING';
+        wsStatusEl.className = 'ws-status ws-reconnecting';
+    }
 
     // Jitter: ±25% of current delay
     const jitter = (_reconnectDelay_s * 0.25) * (Math.random() * 2 - 1);
@@ -594,6 +665,7 @@ function _resolveRecalibratingAlerts(noradId, epochUtc) {
     }
     if (hasRecalibrating) {
         updateAlertStatus(panelState, noradId, 'resolved', epochUtc);
+        if (noradId === selectedNoradId) { _setChartVisible(false); }
     }
 }
 
@@ -671,6 +743,7 @@ function _seedFromCatalog(catalog) {
             routeMessage(syntheticMsg);
         }
     }
+    _updateTrackedCount();
 }
 
 // ---------------------------------------------------------------------------
@@ -713,6 +786,9 @@ export async function initApp() {
     initAlertSound();
     initAlertFlash();
 
+    // Step 2: Assign tracked count element reference.
+    trackedCountEl = document.getElementById('tracked-count');
+
     // 5b. Wire mute toggle button.
     const muteBtn = document.getElementById('mute-toggle');
     if (muteBtn) {
@@ -733,6 +809,7 @@ export async function initApp() {
             selectObject(chartState, noradId);
         }
         _showObjectInfoPanel(noradId);
+        _setChartVisible(noradId !== null && _hasActiveAnomaly(noradId));
         if (noradId !== null) {
             _fetchAndDrawTrack(noradId).catch((err) => {
                 console.warn('[main] _fetchAndDrawTrack (globe click) error:', err);
@@ -746,13 +823,6 @@ export async function initApp() {
     // 7. Fetch initial catalog; seed globe and name map; auto-select first object.
     const catalog = await fetchCatalog(backendBaseUrl);
     _seedFromCatalog(catalog);
-
-    // Step 26: auto-select first catalog object so chart is not empty on demo start.
-    if (catalog.length > 0 && chartState) {
-        const firstId = catalog[0].norad_id;
-        selectedNoradId = firstId;
-        selectObject(chartState, firstId);
-    }
 
     // 8. Open the WebSocket connection.
     connectWebSocket('ws://' + window.location.hostname + ':8001/ws/live');

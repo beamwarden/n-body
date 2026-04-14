@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ne-body SSA Platform</title>
+    <title>ne-body (Near Earth body) SSA Platform</title>
 
     <!-- CesiumJS 1.114 from CDN -->
     <link rel="stylesheet" href="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Widgets/widgets.css" />
@@ -18,13 +18,25 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { display: flex; flex-direction: column; height: 100vh; background: #0a0a0f; color: #e0e0e0; font-family: monospace; }
         /* NF-022: 18px header for legibility on 1920x1080 projected display at 3m */
-        #header { padding: 8px 16px; background: #111118; border-bottom: 1px solid #222; font-size: 18px; }
+        #header { padding: 6px 16px; background: #0d0d14; border-bottom: 1px solid #222; font-size: 18px; box-shadow: 0 1px 4px rgba(0, 150, 255, 0.15); }
         #main-layout { display: flex; flex: 1; overflow: hidden; }
         #cesium-container { flex: 1; height: 100%; }
         /* NF-022: minimum 14px for side panel text */
         #side-panel { width: 380px; display: flex; flex-direction: column; border-left: 1px solid #222; font-size: 14px; }
-        #residual-chart { flex: 1; padding: 8px; overflow: hidden; font-size: 14px; min-height: 160px; }
-        #alert-panel { height: 240px; padding: 8px; overflow-y: auto; font-size: 14px; border-bottom: 1px solid #222; }
+        #residual-chart {
+            max-height: 0;
+            overflow: hidden;
+            opacity: 0;
+            transition: max-height 0.3s ease-in-out, opacity 0.3s ease-in-out;
+            padding: 0 8px;
+            font-size: 14px;
+        }
+        #residual-chart.chart-expanded {
+            max-height: 400px;
+            opacity: 1;
+            padding: 8px;
+        }
+        #alert-panel { flex: 1; min-height: 200px; padding: 8px; overflow-y: auto; font-size: 14px; border-bottom: 1px solid #222; }
 
         /* Alert panel styles (F-055) */
         .alert-header {
@@ -252,6 +264,14 @@
             z-index: 50;
         }
 
+        /* Tracked object counter — header right side */
+        .tracked-count { float: right; color: #66ff66; font-size: 14px; font-weight: bold; letter-spacing: 0.05em; padding: 2px 12px; border: 1px solid #333; border-radius: 3px; margin-top: 2px; margin-right: 10px; }
+
+        /* WebSocket status indicator — header right side */
+        .ws-status { float: right; font-size: 11px; padding: 3px 8px; border-radius: 3px; margin-top: 3px; margin-right: 10px; }
+        .ws-live { color: #66ff66; border: 1px solid #2a4a2a; }
+        .ws-reconnecting { color: #ffaa00; border: 1px solid #4a3a1a; }
+
         /* Mute toggle button — top-right of header */
         #mute-toggle {
             float: right;
@@ -315,6 +335,8 @@
 <body>
     <div id="header">
         <button id="mute-toggle">&#x1F514; UNMUTE</button>
+        <span id="tracked-count" class="tracked-count">0 TRACKED</span>
+        <span id="ws-status" class="ws-status ws-live">LIVE</span>
         ne-body SSA Platform — Continuous Monitoring &amp; Prediction
     </div>
     <div id="object-info-panel"></div>
@@ -322,7 +344,7 @@
         <div id="cesium-container"></div>
         <div id="side-panel">
             <div id="alert-panel"></div>
-            <div id="residual-chart"></div>
+            <div id="residual-chart"><div class="alert-header" id="chart-section-header">RESIDUALS / NIS</div></div>
         </div>
     </div>
 
