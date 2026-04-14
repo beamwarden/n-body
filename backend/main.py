@@ -1327,6 +1327,28 @@ async def admin_trigger_ingest() -> dict:
     return {"inserted": inserted}
 
 
+@app.post("/admin/reload-catalog")
+async def admin_reload_catalog() -> dict:
+    """Reload catalog.json from disk without restarting the server.
+
+    Reads the catalog config file specified at startup and replaces
+    app.state.catalog_entries. Useful after editing catalog.json during
+    development or demo setup.
+
+    Returns:
+        JSON with 'count' of entries loaded and 'path' of the config file.
+    """
+    catalog_config_path: str = app.state.catalog_config_path
+    try:
+        catalog_entries: list[dict] = ingest.load_catalog_config(catalog_config_path)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("admin_reload_catalog error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    app.state.catalog_entries = catalog_entries
+    logger.info("admin_reload_catalog: loaded %d entries from %s", len(catalog_entries), catalog_config_path)
+    return {"count": len(catalog_entries), "path": catalog_config_path}
+
+
 # ---------------------------------------------------------------------------
 # Phase 6: WebSocket endpoint
 # ---------------------------------------------------------------------------

@@ -35,6 +35,10 @@ ingest:
 process:
 	curl -X POST http://localhost:8001/admin/trigger-process
 
+# Reload catalog.json into the running backend without restart
+reload-catalog:
+	curl -X POST http://localhost:8001/admin/reload-catalog
+
 # Run tests
 test:
 	pytest tests/ -v

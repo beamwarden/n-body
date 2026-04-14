@@ -27,25 +27,70 @@ export function initAlertPanel(containerId) {
         return null;
     }
 
-    // Header
+    // Header with collapse toggle
     const header = document.createElement('div');
     header.className = 'alert-header';
-    header.textContent = 'Anomaly Alerts';
+    header.style.padding = '6px 8px';
+
+    const toggleSpan = document.createElement('span');
+    toggleSpan.className = 'alert-panel-toggle';
+    toggleSpan.textContent = '▲';
+    header.appendChild(toggleSpan);
+
+    const titleText = document.createTextNode('ANOMALY ALERTS');
+    header.appendChild(titleText);
     containerEl.appendChild(header);
 
-    // Scrollable alert list
+    // Scrollable alert list wrapper (collapsed/expanded via CSS class)
+    const listWrap = document.createElement('div');
+    listWrap.className = 'alert-panel-list-wrap';
+
     const listEl = document.createElement('div');
     listEl.className = 'alert-list';
-    containerEl.appendChild(listEl);
+    listWrap.appendChild(listEl);
+    containerEl.appendChild(listWrap);
 
-    return {
+    // Start expanded
+    containerEl.classList.add('alert-panel-expanded');
+
+    const panelState = {
         containerEl,
         listEl,
+        toggleSpan,
+        collapsed: false,
         /** @type {Map<string, {el: HTMLElement, data: Object, status: string}>} */
         alerts: new Map(),
         /** @type {Map<number, string>} noradId -> object name */
         nameMap: new Map(),
     };
+
+    // Click on header toggles collapse
+    header.addEventListener('click', () => {
+        _toggleCollapse(panelState);
+    });
+
+    return panelState;
+}
+
+/**
+ * Expand the alert panel if it is currently collapsed.
+ * @param {Object} panelState - Panel state from initAlertPanel.
+ */
+export function expandAlertPanel(panelState) {
+    if (!panelState || !panelState.collapsed) return;
+    panelState.collapsed = false;
+    panelState.containerEl.classList.replace('alert-panel-collapsed', 'alert-panel-expanded');
+    panelState.toggleSpan.textContent = '▲';
+}
+
+function _toggleCollapse(panelState) {
+    if (panelState.collapsed) {
+        expandAlertPanel(panelState);
+    } else {
+        panelState.collapsed = true;
+        panelState.containerEl.classList.replace('alert-panel-expanded', 'alert-panel-collapsed');
+        panelState.toggleSpan.textContent = '▼';
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -175,6 +220,9 @@ export function addAlert(panelState, anomalyEvent, nameMapOverride, onClickCallb
             onClickCallback(norad_id);
         });
     }
+
+    // Auto-expand the panel when a new anomaly arrives.
+    expandAlertPanel(panelState);
 
     // Prepend (newest on top)
     panelState.listEl.insertBefore(alertEl, panelState.listEl.firstChild);
