@@ -50,11 +50,10 @@ export function initAlertPanel(containerId) {
     listWrap.appendChild(listEl);
     containerEl.appendChild(listWrap);
 
-    // Start expanded
-    containerEl.classList.add('alert-panel-expanded');
-
     const panelState = {
         containerEl,
+        headerEl: header,
+        listWrap,
         listEl,
         toggleSpan,
         collapsed: false,
@@ -80,7 +79,8 @@ export function expandAlertPanel(panelState) {
     if (!panelState || !panelState.collapsed) return;
     panelState.collapsed = false;
     panelState.containerEl.style.flex = '1 1 0';
-    panelState.listEl.parentElement.style.display = '';
+    panelState.containerEl.style.maxHeight = '';
+    panelState.listWrap.style.display = '';
     panelState.toggleSpan.textContent = '▲';
 }
 
@@ -89,8 +89,11 @@ function _toggleCollapse(panelState) {
         expandAlertPanel(panelState);
     } else {
         panelState.collapsed = true;
-        panelState.containerEl.style.flex = '0 0 auto';
-        panelState.listEl.parentElement.style.display = 'none';
+        // Use explicit header height so the panel truly shrinks in the flex layout.
+        const h = panelState.headerEl.offsetHeight;
+        panelState.containerEl.style.flex = 'none';
+        panelState.containerEl.style.maxHeight = h + 'px';
+        panelState.listWrap.style.display = 'none';
         panelState.toggleSpan.textContent = '▼';
     }
 }
