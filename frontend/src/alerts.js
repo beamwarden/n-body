@@ -47,22 +47,30 @@ export function initAlertPanel(containerId) {
         nameMap: new Map(),
     };
 
+    const sidePanelEl = document.getElementById('side-panel');
+    const reopenTabEl = document.getElementById('alerts-reopen-tab');
+
     if (headerEl) {
         headerEl.addEventListener('click', () => _toggleCollapse(panelState));
     }
+    if (reopenTabEl) {
+        reopenTabEl.addEventListener('click', () => expandAlertPanel(panelState));
+    }
+
+    panelState.sidePanelEl = sidePanelEl;
 
     return panelState;
 }
 
 /**
- * Expand the alert panel if it is currently collapsed.
+ * Expand the alert panel (slide side panel open) if currently collapsed.
  * @param {Object} panelState - Panel state from initAlertPanel.
  */
 export function expandAlertPanel(panelState) {
     if (!panelState || !panelState.collapsed) return;
     panelState.collapsed = false;
-    panelState.containerEl.style.display = '';
-    if (panelState.toggleSpan) panelState.toggleSpan.textContent = '\u25b2';
+    if (panelState.sidePanelEl) panelState.sidePanelEl.classList.remove('panel-collapsed');
+    if (panelState.toggleSpan) panelState.toggleSpan.textContent = '\u25bc';
 }
 
 function _toggleCollapse(panelState) {
@@ -70,8 +78,8 @@ function _toggleCollapse(panelState) {
         expandAlertPanel(panelState);
     } else {
         panelState.collapsed = true;
-        panelState.containerEl.style.display = 'none';
-        if (panelState.toggleSpan) panelState.toggleSpan.textContent = '\u25bc';
+        if (panelState.sidePanelEl) panelState.sidePanelEl.classList.add('panel-collapsed');
+        if (panelState.toggleSpan) panelState.toggleSpan.textContent = '\u25b6';
     }
 }
 

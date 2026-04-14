@@ -22,7 +22,12 @@
         #main-layout { display: flex; flex: 1; overflow: hidden; }
         #cesium-container { flex: 1; height: 100%; }
         /* NF-022: minimum 14px for side panel text */
-        #side-panel { width: 380px; display: flex; flex-direction: column; border-left: 1px solid #222; font-size: 14px; }
+        #side-panel { width: 380px; display: flex; flex-direction: column; border-left: 1px solid #222; font-size: 14px; transition: width 0.2s ease; overflow: hidden; }
+        #side-panel.panel-collapsed { width: 0; border-left: none; }
+        /* Reopen tab — fixed to right edge, visible only when panel is collapsed */
+        #alerts-reopen-tab { display: none; position: fixed; right: 0; top: 50%; transform: translateY(-50%); writing-mode: vertical-rl; background: #0d0d14; border: 1px solid #333; border-right: none; color: #aaa; font-family: monospace; font-size: 12px; padding: 12px 6px; cursor: pointer; z-index: 200; letter-spacing: 0.05em; }
+        #alerts-reopen-tab:hover { color: #fff; border-color: #555; }
+        #side-panel.panel-collapsed ~ #alerts-reopen-tab { display: block; }
         #residual-chart {
             max-height: 0;
             overflow: hidden;
@@ -363,12 +368,13 @@
         <div id="cesium-container"></div>
         <div id="side-panel">
             <div id="alert-panel-header" class="alert-header">
-                <span class="alert-panel-toggle" id="alert-panel-toggle">&#9650;</span>
+                <span class="alert-panel-toggle" id="alert-panel-toggle">&#9660;</span>
                 ANOMALY ALERTS
             </div>
             <div id="alert-panel"></div>
             <div id="residual-chart"><div class="alert-header" id="chart-section-header">RESIDUALS / NIS</div></div>
         </div>
+        <div id="alerts-reopen-tab" title="Show alerts panel">ALERTS &#9664;</div>
     </div>
 
     <!-- Anomaly flash overlay — direct child of body to escape Cesium stacking context -->
@@ -378,7 +384,7 @@
     </div>
 
     <!-- Application JS modules (ES2022, loaded as modules) -->
-    <script type="module" src="src/main.js?v=4"></script>
+    <script type="module" src="src/main.js?v=5"></script>
     <noscript>
         <div style="position:fixed;top:0;left:0;width:100%;padding:20px;background:#300;color:#fff;font-size:18px;text-align:center;z-index:9999;">
             JavaScript is required to run the ne-body SSA Platform.
