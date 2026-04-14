@@ -156,6 +156,18 @@ export function addAlert(panelState, anomalyEvent, nameMapOverride, onClickCallb
     statusEl.textContent = 'ACTIVE';
     alertEl.appendChild(statusEl);
 
+    // Dismiss button — top-right of card, removes this entry only.
+    const dismissBtn = document.createElement('button');
+    dismissBtn.className = 'alert-dismiss-btn';
+    dismissBtn.textContent = '×';
+    dismissBtn.title = 'Dismiss';
+    dismissBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (alertEl.parentNode) alertEl.parentNode.removeChild(alertEl);
+        panelState.alerts.delete(key);
+    });
+    alertEl.appendChild(dismissBtn);
+
     // Step 16: Wire alert card click to object selection callback.
     if (onClickCallback !== null) {
         alertEl.style.cursor = 'pointer';

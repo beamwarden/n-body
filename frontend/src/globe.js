@@ -373,14 +373,20 @@ export function removeSatelliteEntity(viewer, noradId) {
 export function flyToObject(viewer, noradId) {
     const entity = entityMap.get(noradId);
     if (!entity) return;
-    viewer.camera.flyTo({
-        destination: entity.position.getValue(Cesium.JulianDate.now()),
-        orientation: {
-            heading: Cesium.Math.toRadians(0),
-            pitch: Cesium.Math.toRadians(-45),
-            roll: 0,
-        },
-        offset: new Cesium.HeadingPitchRange(0, Cesium.Math.toRadians(-45), 2000000),
+    const position = entity.position.getValue(Cesium.JulianDate.now());
+    if (!position) return;
+    // Build an explicit BoundingSphere at the satellite position so the
+    // 800 km range is respected. viewer.flyTo() on a billboard entity
+    // computes a near-zero bounding sphere and ignores the range offset;
+    // flyToBoundingSphere with an explicit sphere is the correct API.
+    const sphere = new Cesium.BoundingSphere(position, 1000);
+    viewer.camera.flyToBoundingSphere(sphere, {
+        offset: new Cesium.HeadingPitchRange(
+            0,
+            Cesium.Math.toRadians(-30),
+            4500000,  // 4,500 km from satellite (~5,000 km above surface) — continental scale
+        ),
+        duration: 1.5,
     });
 }
 
