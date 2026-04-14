@@ -27,33 +27,17 @@ export function initAlertPanel(containerId) {
         return null;
     }
 
-    // Header with collapse toggle
-    const header = document.createElement('div');
-    header.className = 'alert-header';
-    header.style.padding = '6px 8px';
+    // The header lives in the HTML as #alert-panel-header (always visible).
+    const headerEl = document.getElementById('alert-panel-header');
+    const toggleSpan = document.getElementById('alert-panel-toggle');
 
-    const toggleSpan = document.createElement('span');
-    toggleSpan.className = 'alert-panel-toggle';
-    toggleSpan.textContent = '▲';
-    header.appendChild(toggleSpan);
-
-    const titleText = document.createTextNode('ANOMALY ALERTS');
-    header.appendChild(titleText);
-    containerEl.appendChild(header);
-
-    // Scrollable alert list wrapper (collapsed/expanded via CSS class)
-    const listWrap = document.createElement('div');
-    listWrap.className = 'alert-panel-list-wrap';
-
+    // containerEl (#alert-panel) holds only the scrollable alert list.
     const listEl = document.createElement('div');
     listEl.className = 'alert-list';
-    listWrap.appendChild(listEl);
-    containerEl.appendChild(listWrap);
+    containerEl.appendChild(listEl);
 
     const panelState = {
         containerEl,
-        headerEl: header,
-        listWrap,
         listEl,
         toggleSpan,
         collapsed: false,
@@ -63,10 +47,9 @@ export function initAlertPanel(containerId) {
         nameMap: new Map(),
     };
 
-    // Click on header toggles collapse
-    header.addEventListener('click', () => {
-        _toggleCollapse(panelState);
-    });
+    if (headerEl) {
+        headerEl.addEventListener('click', () => _toggleCollapse(panelState));
+    }
 
     return panelState;
 }
@@ -78,10 +61,8 @@ export function initAlertPanel(containerId) {
 export function expandAlertPanel(panelState) {
     if (!panelState || !panelState.collapsed) return;
     panelState.collapsed = false;
-    panelState.containerEl.style.flex = '1 1 0';
-    panelState.containerEl.style.maxHeight = '';
-    panelState.listWrap.style.display = '';
-    panelState.toggleSpan.textContent = '▲';
+    panelState.containerEl.style.display = '';
+    if (panelState.toggleSpan) panelState.toggleSpan.textContent = '\u25b2';
 }
 
 function _toggleCollapse(panelState) {
@@ -89,12 +70,8 @@ function _toggleCollapse(panelState) {
         expandAlertPanel(panelState);
     } else {
         panelState.collapsed = true;
-        // Use explicit header height so the panel truly shrinks in the flex layout.
-        const h = panelState.headerEl.offsetHeight;
-        panelState.containerEl.style.flex = 'none';
-        panelState.containerEl.style.maxHeight = h + 'px';
-        panelState.listWrap.style.display = 'none';
-        panelState.toggleSpan.textContent = '▼';
+        panelState.containerEl.style.display = 'none';
+        if (panelState.toggleSpan) panelState.toggleSpan.textContent = '\u25bc';
     }
 }
 
