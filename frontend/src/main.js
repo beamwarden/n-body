@@ -5,7 +5,7 @@
  * alerts modules.
  */
 
-import { initGlobe, updateSatellitePosition, updateUncertaintyEllipsoid, highlightAnomaly, setupSelectionHandler, drawHistoricalTrack, drawPredictiveTrackWithCone, clearTrackAndCone, applyConjunctionRisk, clearConjunctionRisk, getConjunctionRiskMap, getLastConjunctionMessage, removeSatelliteEntity, flyToObject, getRenderedEntityCount } from './globe.js';
+import { initGlobe, updateSatellitePosition, updateUncertaintyEllipsoid, highlightAnomaly, setupSelectionHandler, drawHistoricalTrack, drawPredictiveTrackWithCone, clearTrackAndCone, applyConjunctionRisk, clearConjunctionRisk, getConjunctionRiskMap, getLastConjunctionMessage, removeSatelliteEntity, flyToObject, getRenderedEntityCount, applySampledTrack } from './globe.js';
 import { initResidualChart, appendResidualDataPoint, selectObject, addAnomalyMarker, resizeChart } from './residuals.js';
 import { initAlertPanel, addAlert, updateAlertStatus, updateAlertConjunctions, seedFromCatalog as alertSeedFromCatalog } from './alerts.js';
 import { initAlertSound, triggerAlertSound, setAlertSoundMuted } from './alertsound.js';
@@ -67,6 +67,9 @@ const catalogMap = new Map();
 let _reconnectDelay_s = 1;
 const _MAX_RECONNECT_DELAY_S = 30;
 let _reconnecting = false;
+
+// Deep-link: NORAD ID to fly to once its first state_update entity is created.
+let _pendingDeepLinkNoradId = null;
 
 // ---------------------------------------------------------------------------
 // Step 5: fetchCatalog
@@ -133,6 +136,17 @@ export function routeMessage(message) {
             message.eci_km,
             message.epoch_utc
         );
+        // Color diverged/anomalous objects red immediately on state_update so
+        // objects flagged during a previous session are red on page load/reconnect.
+        if (message.anomaly_type !== null) {
+            highlightAnomaly(viewer, norad_id, message.anomaly_type);
+        }
+        // Deep-link fly-to: deferred until the entity exists in entityMap.
+        if (_pendingDeepLinkNoradId !== null && norad_id === _pendingDeepLinkNoradId) {
+            flyToObject(viewer, norad_id);
+            if (chartState) selectObject(chartState, norad_id);
+            _pendingDeepLinkNoradId = null;
+        }
         if (norad_id === selectedNoradId && chartState) {
             appendResidualDataPoint(chartState, message);
         }
@@ -171,7 +185,7 @@ export function routeMessage(message) {
                 _fetchAndDrawTrack(clickedId).catch((err) => {
                     console.warn('[main] _fetchAndDrawTrack (alert click) error:', err);
                 });
-            });
+            }, _dismissAlert);
         }
         if (norad_id === selectedNoradId) { _setChartVisible(true); }
         // Obtrusive alerting: audio alarm + fullscreen flash for live anomaly messages.
@@ -212,6 +226,8 @@ export function routeMessage(message) {
         }
         latestStateMap.set(norad_id, message);
 
+    } else if (type === 'track_update') {
+        applySampledTrack(viewer, message);
     } else if (type === 'conjunction_risk') {
         // Conjunction risk (plan step 10): apply globe highlighting and enrich alert card.
         applyConjunctionRisk(viewer, message);
@@ -273,7 +289,7 @@ export function connectWebSocket(url) {
                             _fetchAndDrawTrack(clickedId).catch((err) => {
                                 console.warn('[main] _fetchAndDrawTrack (alert seed) error:', err);
                             });
-                        });
+                        }, _dismissAlert);
                     }
                 }
             }
@@ -573,7 +589,12 @@ function _showObjectInfoPanel(noradId) {
 
     let posStr = 'N/A';
     let velStr = 'N/A';
-    let epochStr = 'N/A';
+    let sgp4PosStr = 'N/A';
+    let tleEpochStr = 'N/A';
+    let tleAgeStr = '';
+    let tleAgeClass = 'age-ok';
+    let deltaKm = null;
+
     if (state) {
         if (state.eci_km && state.eci_km.length === 3) {
             posStr = state.eci_km.map((v) => v.toFixed(2)).join(', ') + ' km';
@@ -581,22 +602,54 @@ function _showObjectInfoPanel(noradId) {
         if (state.eci_km_s && state.eci_km_s.length === 3) {
             velStr = state.eci_km_s.map((v) => v.toFixed(4)).join(', ') + ' km/s';
         }
-        if (state.epoch_utc) {
-            epochStr = String(state.epoch_utc).replace('T', ' ').substring(0, 19) + ' UTC';
+        if (state.sgp4_eci_km && state.sgp4_eci_km.length === 3) {
+            sgp4PosStr = state.sgp4_eci_km.map((v) => v.toFixed(2)).join(', ') + ' km';
+        }
+        if (state.tle_epoch_utc) {
+            const tleDate = new Date(state.tle_epoch_utc);
+            tleEpochStr = state.tle_epoch_utc.replace('T', ' ').substring(0, 19) + ' UTC';
+            const ageMs = Date.now() - tleDate.getTime();
+            const ageDays = ageMs / 86400000;
+            if (ageDays < 1) {
+                tleAgeStr = `${(ageDays * 24).toFixed(1)} hr ago`;
+                tleAgeClass = 'age-ok';
+            } else if (ageDays < 3) {
+                tleAgeStr = `${ageDays.toFixed(1)} days ago`;
+                tleAgeClass = 'age-warn';
+            } else {
+                tleAgeStr = `${ageDays.toFixed(1)} days ago`;
+                tleAgeClass = 'age-old';
+            }
+        }
+        // Delta: magnitude of position innovation (prediction vs observation).
+        if (state.innovation_eci_km && state.innovation_eci_km.length >= 3) {
+            const inn = state.innovation_eci_km;
+            deltaKm = Math.sqrt(inn[0] ** 2 + inn[1] ** 2 + inn[2] ** 2);
         }
     }
 
+    let deltaHtml = '';
+
     let rows = `
-        <div class="info-row"><span class="info-label">NORAD ID: </span>${_escapeHtml(String(noradId))}</div>
-        <div class="info-row"><span class="info-label">Name: </span>${_escapeHtml(objName)}</div>`;
+        <div class="info-row" title="NORAD catalog number — the unique international identifier for this space object."><span class="info-label">NORAD ID: </span><a class="norad-link" href="https://www.satcat.com/sats/${noradId}" target="_blank" rel="noopener">${_escapeHtml(String(noradId))}</a></div>
+        <div class="info-row" title="Common name from the Space-Track catalog."><span class="info-label">Name: </span>${_escapeHtml(objName)}</div>`;
     if (objectClass) {
-        rows += `<div class="info-row"><span class="info-label">Class: </span>${_escapeHtml(objectClass)}</div>`;
+        rows += `<div class="info-row" title="Object classification: active_satellite, rocket_body, or debris."><span class="info-label">Class: </span>${_escapeHtml(objectClass)}</div>`;
     }
     rows += `
-        <div class="info-row"><span class="info-label">ECI Pos: </span>${_escapeHtml(posStr)}</div>
-        <div class="info-row"><span class="info-label">ECI Vel: </span>${_escapeHtml(velStr)}</div>
-        <div class="info-row"><span class="info-label">Confidence: </span><span class="${confClass}">${_escapeHtml(confPct)}</span></div>
-        <div class="info-row"><span class="info-label">Updated: </span>${_escapeHtml(epochStr)}</div>`;
+        <div class="info-row" title="ECI J2000 position [x, y, z] from the Kalman filter state estimate. Origin at Earth center, x toward vernal equinox, z toward north pole."><span class="info-label">Filter Pos: </span>${_escapeHtml(posStr)}</div>
+        <div class="info-row" title="ECI J2000 position predicted by raw SGP4 propagation of the latest TLE, without Kalman filter correction. Divergence from Filter Pos indicates orbital maneuver or TLE error."><span class="info-label">SGP4 Pos: </span>${_escapeHtml(sgp4PosStr)}</div>
+        <div class="info-row" title="ECI J2000 velocity [vx, vy, vz] from the Kalman filter state estimate. Typical LEO magnitude is ~7.5 km/s."><span class="info-label">ECI Vel: </span>${_escapeHtml(velStr)}</div>
+        <div class="info-row" title="Filter confidence score (0–100%). Green &gt; 85%: well-converged. Amber 60–85%: moderate uncertainty. Red &lt; 60%: poor fit or diverging filter."><span class="info-label">Confidence: </span><span class="${confClass}">${_escapeHtml(confPct)}</span></div>
+        <div class="info-row" title="The timestamp at which this TLE was measured — the starting point SGP4 propagates forward from. The older this is, the less accurate the position prediction, especially for maneuvering objects."><span class="info-label">TLE Epoch: </span>${_escapeHtml(tleEpochStr)}${tleAgeStr ? ` <span class="info-tle-age ${tleAgeClass}">(${_escapeHtml(tleAgeStr)})</span>` : ''}</div>`;
+    if (deltaKm !== null) {
+        let dClass = 'delta-ok';
+        let deltaTip = 'Magnitude of the innovation vector (SGP4 prediction minus filter state). Small values (&lt;5 km) indicate good TLE accuracy. Large values indicate a maneuver or stale TLE.';
+        if (deltaKm > 50) { dClass = 'delta-alert'; deltaTip = 'Large delta (&gt;50 km) — likely maneuver or significantly stale TLE. Filter is actively diverging.'; }
+        else if (deltaKm > 5) { dClass = 'delta-warn'; deltaTip = 'Moderate delta (5–50 km) — TLE may be aging or object performed a small maneuver.'; }
+        deltaHtml = `<div class="info-delta ${dClass}" title="${deltaTip}"><span class="info-delta-label">SGP4 vs Filter Delta</span>${deltaKm.toFixed(1)} km</div>`;
+    }
+    rows += deltaHtml;
 
     panelEl.innerHTML = `<div class="info-title">Object Info</div>${rows}`;
     panelEl.style.display = 'block';
@@ -679,6 +732,23 @@ function _resolveRecalibratingAlerts(noradId, epochUtc) {
  * @param {Array<Object>} catalog - Array of catalog entries from GET /catalog.
  * @returns {void}
  */
+/**
+ * POST to /alerts/dismiss to persist a card dismissal across page reloads.
+ * Fire-and-forget: failures are logged but do not affect the UI.
+ *
+ * @param {number} noradId - NORAD catalog ID.
+ * @param {string} epochUtc - ISO-8601 detection epoch matching the alerts table.
+ */
+function _dismissAlert(noradId, epochUtc) {
+    fetch(`${backendBaseUrl}/alerts/dismiss`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ norad_id: noradId, epoch_utc: epochUtc }),
+    }).catch((err) => {
+        console.warn('[main] Failed to persist alert dismissal:', err);
+    });
+}
+
 function _seedFromCatalog(catalog) {
     if (!catalog || catalog.length === 0) return;
 
@@ -704,10 +774,13 @@ function _seedFromCatalog(catalog) {
                     type: 'state_update',
                     norad_id: entry.norad_id,
                     epoch_utc: entry.last_update_epoch_utc ?? null,
+                    tle_epoch_utc: entry.last_update_epoch_utc ?? null,
                     eci_km: entry.eci_km ?? null,
                     eci_km_s: entry.eci_km_s ?? null,
+                    sgp4_eci_km: null,
                     confidence: entry.confidence ?? null,
                     nis: entry.nis ?? 0,
+                    innovation_eci_km: entry.innovation_eci_km ?? null,
                     anomaly_type: null,
                 });
             }
@@ -725,7 +798,7 @@ function _seedFromCatalog(catalog) {
         if (
             entry.eci_km != null &&
             entry.covariance_diagonal_km2 != null &&
-            entry.epoch_utc != null &&
+            entry.last_update_epoch_utc != null &&
             _isFreshEpoch(entry.last_update_epoch_utc)
         ) {
             const syntheticMsg = {
@@ -744,6 +817,28 @@ function _seedFromCatalog(catalog) {
         }
     }
     _updateTrackedCount();
+
+    // Deep-link: ?select=NORAD_ID. Two paths depending on timing:
+    // (a) WS connect burst arrived before catalog fetch — entity already exists,
+    //     flyToObject works immediately and we clear the pending flag.
+    // (b) Catalog fetch returns before WS burst — entity not yet in entityMap,
+    //     store pending ID so the state_update handler fires the fly-to later.
+    // Both paths are tried: immediate call is a no-op if entity is absent.
+    if (_pendingDeepLinkNoradId === null) {
+        const _dlParams = new URLSearchParams(window.location.search);
+        const _dlSelect = _dlParams.get('select');
+        if (_dlSelect) {
+            const targetNoradId = parseInt(_dlSelect, 10);
+            if (!isNaN(targetNoradId) && nameMap.has(targetNoradId)) {
+                _pendingDeepLinkNoradId = targetNoradId;
+                selectedNoradId = targetNoradId;
+                _showObjectInfoPanel(targetNoradId);
+                // Try immediately in case WS burst already created the entity.
+                flyToObject(viewer, targetNoradId);
+                if (chartState) selectObject(chartState, targetNoradId);
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

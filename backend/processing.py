@@ -27,6 +27,63 @@ logger = logging.getLogger(__name__)
 WS_TYPE_STATE_UPDATE: str = "state_update"
 WS_TYPE_ANOMALY: str = "anomaly"
 WS_TYPE_RECALIBRATION: str = "recalibration"
+WS_TYPE_TRACK_UPDATE: str = "track_update"
+
+def generate_track_samples(
+    tle_line1: str,
+    tle_line2: str,
+    start_epoch_utc: datetime.datetime,
+    num_samples: int = 60,
+    interval_s: float = 60.0,
+) -> list[dict]:
+    """Propagate a TLE forward and return a list of ECI J2000 position samples.
+
+    Each sample is propagated from start_epoch_utc + i * interval_s using
+    propagator.propagate_tle(). Samples that raise ValueError (e.g., SGP4 decay
+    or epoch too far) are skipped and logged at DEBUG level.
+
+    Coordinate frame: output positions are ECI J2000 km as produced by
+    propagator.propagate_tle() (TEME→GCRS conversion applied internally).
+
+    Args:
+        tle_line1: TLE line 1.
+        tle_line2: TLE line 2.
+        start_epoch_utc: UTC-aware datetime for the first sample.
+        num_samples: Number of samples to generate (default 60).
+        interval_s: Time step between samples in seconds (default 60.0).
+
+    Returns:
+        List of dicts with keys:
+            epoch_utc (str): ISO-8601 UTC string ending in 'Z'.
+            eci_km (list[float]): [x, y, z] ECI J2000 position in km.
+        May be shorter than num_samples if some propagations failed.
+    """
+    # TECH DEBT TD-030: 60 SGP4+TEME-to-GCRS calls per object is ~5ms each
+    # (~300ms total per object). For 71 objects per cycle = ~21s added CPU time.
+    # Vectorised astropy Time arrays can reduce this 10-20x post-POC.
+    samples: list[dict] = []
+    for i in range(num_samples):
+        sample_epoch: datetime.datetime = start_epoch_utc + datetime.timedelta(
+            seconds=i * interval_s
+        )
+        try:
+            position_eci_km, _ = propagator.propagate_tle(
+                tle_line1, tle_line2, sample_epoch
+            )
+            epoch_str: str = sample_epoch.strftime("%Y-%m-%dT%H:%M:%SZ")
+            samples.append({
+                "epoch_utc": epoch_str,
+                "eci_km": position_eci_km.tolist(),
+            })
+        except ValueError as exc:
+            logger.debug(
+                "generate_track_samples: SGP4 failed at sample %d (epoch=%s): %s",
+                i,
+                sample_epoch.isoformat(),
+                exc,
+            )
+    return samples
+
 
 # Timeout for deferred recalibration on active satellites.  If no second TLE
 # arrives within this window (e.g., Space-Track outage), the pending
@@ -83,6 +140,8 @@ def _build_ws_message(
     filter_state: dict,
     message_type: str,
     anomaly_type: Optional[str] = None,
+    tle_epoch_utc_str: Optional[str] = None,
+    observation_eci_km: Optional[NDArray[np.float64]] = None,
 ) -> dict:
     """Construct a WebSocket message conforming to architecture Section 3.5 schema.
 
@@ -94,9 +153,11 @@ def _build_ws_message(
         filter_state: Filter state dict from kalman.init_filter / kalman.update.
         message_type: One of WS_TYPE_STATE_UPDATE, WS_TYPE_ANOMALY, WS_TYPE_RECALIBRATION.
         anomaly_type: One of the ANOMALY_* constants from anomaly.py, or None.
+        tle_epoch_utc_str: ISO-8601 UTC string for the TLE epoch (for display).
+        observation_eci_km: Raw SGP4 observation vector [x,y,z,vx,vy,vz] in km/km·s⁻¹.
 
     Returns:
-        Dict matching the F-043 schema.
+        Dict matching the F-043 schema, extended with tle_epoch_utc and sgp4_eci_km.
     """
     state = kalman.get_state(filter_state)
 
@@ -129,6 +190,8 @@ def _build_ws_message(
         ).tolist(),
         "confidence": float(state["confidence"]),
         "anomaly_type": anomaly_type,
+        "tle_epoch_utc": tle_epoch_utc_str,
+        "sgp4_eci_km": observation_eci_km[:3].tolist() if observation_eci_km is not None else None,
     }
 
 
@@ -187,6 +250,7 @@ def process_single_object(
     norad_id: int,
     filter_states: dict,
     tle_record: dict,
+    generate_tracks: bool = True,
 ) -> list[dict]:
     """Run predict-update-anomaly-recalibrate for one catalog object.
 
@@ -256,6 +320,8 @@ def process_single_object(
             filter_state=filter_state,
             message_type=WS_TYPE_STATE_UPDATE,
             anomaly_type=None,
+            tle_epoch_utc_str=epoch_utc_str,
+            observation_eci_km=None,
         )
 
         _insert_state_history_row(
@@ -269,7 +335,21 @@ def process_single_object(
             anomaly_type=None,
             message_type=WS_TYPE_STATE_UPDATE,
         )
-        return [ws_message]
+        cold_start_messages: list[dict] = [ws_message]
+        if generate_tracks:
+            _track_now = datetime.datetime.now(tz=datetime.timezone.utc)
+            cold_start_samples = generate_track_samples(
+                tle_line1=tle_line1,
+                tle_line2=tle_line2,
+                start_epoch_utc=_track_now,
+            )
+            cold_start_messages.append({
+                "type": WS_TYPE_TRACK_UPDATE,
+                "norad_id": norad_id,
+                "epoch_utc": _track_now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "samples": cold_start_samples,
+            })
+        return cold_start_messages
 
     # Existing filter: run predict -> update cycle.
     filter_state = filter_states[norad_id]
@@ -410,6 +490,8 @@ def process_single_object(
             filter_state=filter_state,
             message_type=WS_TYPE_ANOMALY,
             anomaly_type=final_type,
+            tle_epoch_utc_str=epoch_utc_str,
+            observation_eci_km=observation_eci_km,
         )
         anomaly_ws_message["nis"] = pending_nis
         anomaly_ws_message["innovation_eci_km"] = pending_innovation
@@ -419,6 +501,8 @@ def process_single_object(
             filter_state=filter_state,
             message_type=WS_TYPE_RECALIBRATION,
             anomaly_type=final_type,
+            tle_epoch_utc_str=epoch_utc_str,
+            observation_eci_km=observation_eci_km,
         )
 
         # Update the existing state_history row written in cycle 1 to reflect
@@ -435,6 +519,19 @@ def process_single_object(
 
         messages.append(anomaly_ws_message)
         messages.append(recal_ws_message)
+        if messages and generate_tracks:
+            _track_start_epoch: datetime.datetime = datetime.datetime.now(tz=datetime.timezone.utc)
+            _track_samples = generate_track_samples(
+                tle_line1=filter_state["last_tle_line1"],
+                tle_line2=filter_state["last_tle_line2"],
+                start_epoch_utc=_track_start_epoch,
+            )
+            messages.append({
+                "type": WS_TYPE_TRACK_UPDATE,
+                "norad_id": norad_id,
+                "epoch_utc": _track_start_epoch.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "samples": _track_samples,
+            })
         return messages
 
     # --- First-cycle anomaly detection ---
@@ -469,6 +566,8 @@ def process_single_object(
                 filter_state=filter_state,
                 message_type=WS_TYPE_ANOMALY,
                 anomaly_type=detected_anomaly_type,
+                tle_epoch_utc_str=epoch_utc_str,
+                observation_eci_km=observation_eci_km,
             )
             anomaly_ws_message["nis"] = nis_val
             anomaly_ws_message["innovation_eci_km"] = innovation_eci_km_list
@@ -514,6 +613,8 @@ def process_single_object(
                 filter_state=filter_state,
                 message_type=WS_TYPE_ANOMALY,
                 anomaly_type=detected_anomaly_type,
+                tle_epoch_utc_str=epoch_utc_str,
+                observation_eci_km=observation_eci_km,
             )
             anomaly_ws_message["nis"] = nis_val
             anomaly_ws_message["innovation_eci_km"] = innovation_eci_km_list
@@ -523,6 +624,8 @@ def process_single_object(
                 filter_state=filter_state,
                 message_type=WS_TYPE_RECALIBRATION,
                 anomaly_type=detected_anomaly_type,
+                tle_epoch_utc_str=epoch_utc_str,
+                observation_eci_km=observation_eci_km,
             )
 
             _insert_state_history_row(
@@ -576,6 +679,8 @@ def process_single_object(
             filter_state=filter_state,
             message_type=WS_TYPE_STATE_UPDATE,
             anomaly_type=None,
+            tle_epoch_utc_str=epoch_utc_str,
+            observation_eci_km=observation_eci_km,
         )
 
         _insert_state_history_row(
@@ -592,4 +697,17 @@ def process_single_object(
 
         messages.append(ws_message)
 
+    if messages and generate_tracks:
+        _final_track_start_epoch: datetime.datetime = datetime.datetime.now(tz=datetime.timezone.utc)
+        _final_track_samples = generate_track_samples(
+            tle_line1=filter_state["last_tle_line1"],
+            tle_line2=filter_state["last_tle_line2"],
+            start_epoch_utc=_final_track_start_epoch,
+        )
+        messages.append({
+            "type": WS_TYPE_TRACK_UPDATE,
+            "norad_id": norad_id,
+            "epoch_utc": _final_track_start_epoch.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "samples": _final_track_samples,
+        })
     return messages

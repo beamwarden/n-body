@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ne-body (Near Earth body) SSA Platform — Event History</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            background: #0a0a0f;
+            color: #e0e0e0;
+            font-family: monospace;
+        }
+
+        /* ---- Header ---- */
+        #header {
+            padding: 6px 16px;
+            background: #0d0d14;
+            border-bottom: 1px solid #222;
+            font-size: 18px;
+            box-shadow: 0 1px 4px rgba(0, 150, 255, 0.15);
+            flex-shrink: 0;
+        }
+        #live-view-link {
+            float: right;
+            color: #aaa;
+            font-family: monospace;
+            font-size: 14px;
+            text-decoration: none;
+            padding: 3px 10px;
+            border: 1px solid #444;
+            border-radius: 3px;
+            margin-top: 2px;
+        }
+        #live-view-link:hover { color: #fff; border-color: #666; }
+
+        /* ---- Toolbar ---- */
+        #toolbar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: #0d0d14;
+            border-bottom: 1px solid #222;
+            flex-wrap: wrap;
+            flex-shrink: 0;
+        }
+        #toolbar input[type="text"],
+        #toolbar select {
+            background: #12121a;
+            color: #e0e0e0;
+            border: 1px solid #333;
+            border-radius: 3px;
+            padding: 4px 8px;
+            font-family: monospace;
+            font-size: 13px;
+            outline: none;
+        }
+        #toolbar input[type="text"]:focus,
+        #toolbar select:focus {
+            border-color: #555;
+        }
+        #search-input { width: 240px; }
+        #type-select { width: 160px; }
+        #status-select { width: 160px; }
+        #since-input, #until-input { width: 148px; }
+        .date-input.invalid { border-color: #ff4444 !important; }
+        #results-count {
+            color: #666;
+            font-size: 12px;
+            margin-left: 4px;
+        }
+
+        /* ---- Table wrapper ---- */
+        #table-wrap {
+            flex: 1;
+            overflow: auto;
+            padding: 0 16px 16px 16px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+            font-size: 13px;
+        }
+        thead th {
+            background: #0d0d14;
+            color: #888;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 8px 10px;
+            border-bottom: 1px solid #333;
+            text-align: left;
+            white-space: nowrap;
+        }
+        th.sortable { cursor: pointer; user-select: none; }
+        th.sortable:hover { color: #ccc; }
+        th.sort-asc::after  { content: " \25B2"; }
+        th.sort-desc::after { content: " \25BC"; }
+
+        tbody tr {
+            border-bottom: 1px solid #1a1a22;
+            transition: background 0.1s;
+        }
+        tbody tr:hover { background: #12121a; }
+        tbody td {
+            padding: 7px 10px;
+            vertical-align: middle;
+            color: #ccc;
+        }
+
+        /* ---- Badges ---- */
+        .type-badge {
+            display: inline-block;
+            padding: 1px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .type-badge.maneuver          { background: #c0000099; color: #ffcccc; }
+        .type-badge.drag_anomaly      { background: #cc660099; color: #ffe0cc; }
+        .type-badge.filter_divergence { background: #550077aa; color: #ddaaff; }
+
+        .status-badge {
+            display: inline-block;
+            padding: 1px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .status-badge.active        { background: #3a0000; color: #ff6666; }
+        .status-badge.recalibrating { background: #3a2500; color: #ffaa44; }
+        .status-badge.resolved      { background: #0a2a0a; color: #66cc66; }
+        .status-badge.dismissed     { background: #1a1a1a; color: #888; }
+
+        /* ---- Actions column ---- */
+        .view-link {
+            color: #6699cc;
+            text-decoration: none;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+        .view-link:hover { color: #99ccff; text-decoration: underline; }
+
+        /* ---- Empty state ---- */
+        .empty-state {
+            text-align: center;
+            color: #555;
+            padding: 48px 0;
+            font-size: 14px;
+        }
+
+        /* ---- Pagination ---- */
+        #pagination {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 16px;
+            background: #0d0d14;
+            border-top: 1px solid #222;
+            flex-shrink: 0;
+            font-size: 13px;
+        }
+        #pagination button {
+            background: #12121a;
+            color: #aaa;
+            border: 1px solid #333;
+            border-radius: 3px;
+            padding: 4px 12px;
+            font-family: monospace;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        #pagination button:hover:not(:disabled) { color: #fff; border-color: #555; }
+        #pagination button:disabled { color: #444; cursor: default; border-color: #222; }
+        #page-indicator { color: #888; }
+        #page-size-select {
+            background: #12121a;
+            color: #e0e0e0;
+            border: 1px solid #333;
+            border-radius: 3px;
+            padding: 4px 8px;
+            font-family: monospace;
+            font-size: 13px;
+            margin-left: auto;
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <a href="index.html" id="live-view-link">LIVE VIEW</a>
+        ne-body (Near Earth body) SSA Platform &mdash; Event History
+    </div>
+
+    <div id="toolbar">
+        <input type="text" id="search-input" placeholder="Search by object name or NORAD ID" />
+        <select id="type-select">
+            <option value="">All Types</option>
+            <option value="maneuver">Maneuver</option>
+            <option value="drag_anomaly">Drag Anomaly</option>
+            <option value="filter_divergence">Filter Divergence</option>
+        </select>
+        <select id="status-select">
+            <option value="">All Statuses</option>
+            <option value="active">Active</option>
+            <option value="recalibrating">Recalibrating</option>
+            <option value="resolved">Resolved</option>
+            <option value="dismissed">Dismissed</option>
+        </select>
+        <input type="text" id="since-input" class="date-input" placeholder="MM/DD/YYYY HH:MM" />
+        <input type="text" id="until-input" class="date-input" placeholder="MM/DD/YYYY HH:MM" />
+        <span id="results-count"></span>
+    </div>
+
+    <div id="table-wrap">
+        <table id="events-table">
+            <thead>
+                <tr>
+                    <th class="sortable" data-col="detection_epoch_utc">Time</th>
+                    <th>Object</th>
+                    <th class="sortable" data-col="anomaly_type">Type</th>
+                    <th class="sortable" data-col="status">Status</th>
+                    <th class="sortable" data-col="nis_value">NIS</th>
+                    <th class="sortable" data-col="recalibration_duration_s">Duration</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="events-tbody">
+            </tbody>
+        </table>
+    </div>
+
+    <div id="pagination">
+        <button id="prev-btn">&larr; Prev</button>
+        <span id="page-indicator">Page 1 of 1</span>
+        <button id="next-btn">Next &rarr;</button>
+        <select id="page-size-select">
+            <option value="10">10 / page</option>
+            <option value="25" selected>25 / page</option>
+            <option value="50">50 / page</option>
+            <option value="100">100 / page</option>
+        </select>
+    </div>
+
+    <script type="module" src="src/history.js"></script>
+</body>
+</html>

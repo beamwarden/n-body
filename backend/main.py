@@ -38,6 +38,7 @@ from dotenv import load_dotenv
 load_dotenv()  # load .env from repo root (no-op if file absent or vars already set)
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 
 import backend.anomaly as anomaly
@@ -53,6 +54,7 @@ from backend.processing import (
     WS_TYPE_STATE_UPDATE,
     WS_TYPE_ANOMALY,
     WS_TYPE_RECALIBRATION,
+    WS_TYPE_TRACK_UPDATE,
 )
 
 logger = logging.getLogger(__name__)
@@ -64,6 +66,7 @@ MAX_WS_CONNECTIONS: int = 20
 _WS_TYPE_STATE_UPDATE: str = WS_TYPE_STATE_UPDATE
 _WS_TYPE_ANOMALY: str = WS_TYPE_ANOMALY
 _WS_TYPE_RECALIBRATION: str = WS_TYPE_RECALIBRATION
+_WS_TYPE_TRACK_UPDATE: str = WS_TYPE_TRACK_UPDATE
 
 
 # ---------------------------------------------------------------------------
@@ -453,7 +456,8 @@ async def _processing_loop_task(app: FastAPI) -> None:
         for entry in catalog_entries:
             norad_id: int = int(entry["norad_id"])
             try:
-                _process_single_object(
+                await asyncio.to_thread(
+                    _process_single_object,
                     app=app,
                     db=db,
                     entry=entry,
@@ -604,6 +608,31 @@ async def lifespan(app: FastAPI):
     ]
     app.state.background_tasks = background_tasks
     logger.info("Background tasks started: ingest_loop, processing_loop.")
+
+    # Warm startup: process the latest TLE per object so filter_states is populated
+    # before the first WebSocket client connects. Uses cold-start path only (one TLE
+    # per object, no track generation) so startup completes in ~1-2s regardless of
+    # how many historical TLEs are cached.
+    warm_count: int = 0
+    for entry in catalog_entries:
+        _nid: int = int(entry["norad_id"])
+        _latest_tle = ingest.get_latest_tle(db, _nid)
+        if _latest_tle is None:
+            continue
+        try:
+            msgs = processing.process_single_object(
+                db=db,
+                entry=entry,
+                norad_id=_nid,
+                filter_states=app.state.filter_states,
+                tle_record=_latest_tle,
+                generate_tracks=False,
+            )
+            if msgs:
+                warm_count += 1
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("warm startup: failed for NORAD %d: %s", _nid, exc)
+    logger.info("Warm startup complete: %d objects initialized.", warm_count)
 
     yield
 
@@ -944,6 +973,33 @@ async def get_active_alerts() -> list[dict]:
     return result
 
 
+class _DismissRequest(BaseModel):
+    norad_id: int
+    epoch_utc: str
+
+
+@app.post("/alerts/dismiss")
+async def dismiss_alert(body: _DismissRequest) -> dict:
+    """Mark an alert as dismissed so it does not reappear on page reload.
+
+    Looks up the alert by (norad_id, epoch_utc) and sets status='dismissed'.
+    Dismissed alerts are excluded from GET /alerts/active responses.
+
+    Args:
+        body: JSON body with norad_id (int) and epoch_utc (ISO-8601 string).
+
+    Returns:
+        Dict with 'dismissed': true if updated, false if no matching alert found.
+    """
+    db: sqlite3.Connection = app.state.db
+    updated: bool = anomaly.dismiss_alert(
+        db,
+        norad_id=body.norad_id,
+        detection_epoch_utc=body.epoch_utc,
+    )
+    return {"dismissed": updated}
+
+
 @app.get("/object/{norad_id}/conjunctions")
 async def get_object_conjunctions(norad_id: int) -> list[dict]:
     """Return the last 5 conjunction screening results for a given NORAD ID.
@@ -1113,14 +1169,11 @@ async def get_object_track(
     tle_line1: str = tle_record["tle_line1"]
     tle_line2: str = tle_record["tle_line2"]
 
-    # Determine reference epoch: prefer filter last_epoch_utc; fall back to TLE epoch.
-    filter_states: dict[int, dict] = app.state.filter_states
-    filter_state: Optional[dict] = filter_states.get(norad_id)
-
-    if filter_state is not None:
-        reference_epoch_utc: datetime.datetime = filter_state["last_epoch_utc"]
-    else:
-        reference_epoch_utc = propagator.tle_epoch_utc(tle_line1)
+    # Reference epoch is always now so the track is centered on the current
+    # satellite position, matching the SampledPositionProperty animation window.
+    reference_epoch_utc: datetime.datetime = datetime.datetime.now(
+        tz=datetime.timezone.utc
+    )
 
     # --- Backward track ---
     # Range: from -seconds_back up to (not including) 0, step step_s, then t=0.
@@ -1246,22 +1299,34 @@ async def admin_trigger_process() -> dict:
     # Sort globally by epoch so inter-object ordering is deterministic.
     all_tle_records.sort(key=lambda x: x[1]["epoch_utc"])
 
+    # Precompute the latest TLE epoch per NORAD so we can gate track generation
+    # to only the final TLE per object (avoids ~60 SGP4 calls per intermediate TLE).
+    latest_tle_epoch_per_norad: dict[int, str] = {}
+    for entry in catalog_entries:
+        _nid = int(entry["norad_id"])
+        _latest = ingest.get_latest_tle(db, _nid)
+        if _latest:
+            latest_tle_epoch_per_norad[_nid] = _latest["epoch_utc"]
+
     processed_count: int = 0
     last_broadcast_norad: set[int] = set()
     for entry, tle_record in all_tle_records:
         norad_id = int(entry["norad_id"])
         try:
+            is_last = (
+                tle_record["epoch_utc"] == latest_tle_epoch_per_norad.get(norad_id)
+            )
             messages: list[dict] = processing.process_single_object(
                 db=db,
                 entry=entry,
                 norad_id=norad_id,
                 filter_states=filter_states,
                 tle_record=tle_record,
+                generate_tracks=is_last,
             )
 
             # Only broadcast the final message per object (the most recent state).
             # Intermediate updates converge P but don't need to hit the browser.
-            is_last = (tle_record == ingest.get_latest_tle(db, norad_id))
             for msg in messages:
                 if is_last or msg.get("type") == WS_TYPE_ANOMALY:
                     await ws_manager.broadcast(msg)
@@ -1325,6 +1390,198 @@ async def admin_trigger_ingest() -> dict:
 
     logger.info("admin_trigger_ingest complete: inserted=%d", inserted)
     return {"inserted": inserted}
+
+
+@app.get("/events/history")
+async def get_events_history(
+    q: Optional[str] = None,
+    type: Optional[str] = None,
+    status: Optional[str] = None,
+    since_utc: Optional[str] = None,
+    until_utc: Optional[str] = None,
+    sort_by: Optional[str] = None,
+    sort_dir: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 25,
+) -> dict:
+    """Return paginated, filtered anomaly event history across all tracked objects.
+
+    Supports free-text search by NORAD ID or object name, filtering by anomaly
+    type and status, time range filtering, multi-column sort, and pagination.
+
+    Args:
+        q: Free-text search. Matches NORAD ID (exact numeric) or object name
+            (case-insensitive substring). No match returns empty results.
+        type: Filter by anomaly_type. One of: maneuver, drag_anomaly,
+            filter_divergence.
+        status: Filter by alert status. One of: active, resolved, dismissed,
+            recalibrating.
+        since_utc: ISO-8601 UTC. Include only events with
+            detection_epoch_utc >= this value.
+        until_utc: ISO-8601 UTC. Include only events with
+            detection_epoch_utc <= this value.
+        sort_by: Column to sort by. One of: detection_epoch_utc, anomaly_type,
+            status, nis_value, recalibration_duration_s.
+            Default: detection_epoch_utc.
+        sort_dir: Sort direction. asc or desc. Default: desc.
+        page: 1-indexed page number. Default: 1.
+        page_size: Results per page. Default: 25. Clamped to [1, 100].
+
+    Returns:
+        Dict with total (int), page (int), page_size (int), results (list).
+        Each result includes: id, norad_id, name, object_class,
+        detection_epoch_utc, anomaly_type, nis_value, status,
+        resolution_epoch_utc, recalibration_duration_s.
+    """
+    # --- Allowlists to prevent SQL injection via sort parameters ---
+    _SORT_BY_ALLOWLIST: set[str] = {
+        "detection_epoch_utc",
+        "anomaly_type",
+        "status",
+        "nis_value",
+        "recalibration_duration_s",
+    }
+    _SORT_DIR_ALLOWLIST: set[str] = {"asc", "desc"}
+
+    # --- Clamp page_size ---
+    page_size = min(max(1, page_size), 100)
+    page = max(1, page)
+
+    # --- Validate and default sort parameters ---
+    if sort_by not in _SORT_BY_ALLOWLIST:
+        sort_by = "detection_epoch_utc"
+    if sort_dir not in _SORT_DIR_ALLOWLIST:
+        sort_dir = "desc"
+
+    # --- Build catalog_name_map from app.state.catalog_entries ---
+    catalog_name_map: dict[int, dict] = {}
+    for entry in app.state.catalog_entries:
+        norad_id_key: int = int(entry["norad_id"])
+        catalog_name_map[norad_id_key] = {
+            "name": entry.get("name", str(norad_id_key)),
+            "object_class": entry.get("object_class", "unknown"),
+        }
+
+    # --- Resolve q param to a set of matching NORAD IDs ---
+    matching_norad_ids: Optional[set[int]] = None
+    if q is not None and q.strip() != "":
+        q_stripped: str = q.strip()
+        matched: set[int] = set()
+
+        # Exact numeric NORAD ID match.
+        try:
+            numeric_norad: int = int(q_stripped)
+            if numeric_norad in catalog_name_map:
+                matched.add(numeric_norad)
+        except ValueError:
+            pass
+
+        # Case-insensitive name substring match.
+        q_lower: str = q_stripped.lower()
+        for nid, info in catalog_name_map.items():
+            if q_lower in info["name"].lower():
+                matched.add(nid)
+
+        if not matched:
+            # q provided but no catalog entries match — return empty immediately.
+            return {
+                "total": 0,
+                "page": page,
+                "page_size": page_size,
+                "results": [],
+            }
+
+        matching_norad_ids = matched
+
+    # --- Build parameterized WHERE clause ---
+    where_clauses: list[str] = []
+    params: list = []
+
+    if matching_norad_ids is not None:
+        # SQLite parameterized IN clause: generate one ? per ID.
+        placeholders: str = ", ".join("?" for _ in matching_norad_ids)
+        where_clauses.append(f"norad_id IN ({placeholders})")
+        params.extend(sorted(matching_norad_ids))
+
+    if type is not None:
+        where_clauses.append("anomaly_type = ?")
+        params.append(type)
+
+    if status is not None:
+        where_clauses.append("status = ?")
+        params.append(status)
+
+    if since_utc is not None:
+        where_clauses.append("detection_epoch_utc >= ?")
+        params.append(since_utc)
+
+    if until_utc is not None:
+        where_clauses.append("detection_epoch_utc <= ?")
+        params.append(until_utc)
+
+    where_sql: str = ""
+    if where_clauses:
+        where_sql = "WHERE " + " AND ".join(where_clauses)
+
+    db: sqlite3.Connection = app.state.db
+
+    # --- COUNT query ---
+    count_sql: str = f"SELECT COUNT(*) FROM alerts {where_sql}"
+    count_cursor = db.execute(count_sql, params)
+    total: int = count_cursor.fetchone()[0]
+
+    # --- SELECT query with ORDER BY and LIMIT/OFFSET ---
+    # sort_by and sort_dir are validated against allowlists above — safe to interpolate.
+    offset: int = (page - 1) * page_size
+    select_sql: str = (
+        f"SELECT id, norad_id, anomaly_type, detection_epoch_utc, status, "
+        f"nis_value, resolution_epoch_utc, recalibration_duration_s "
+        f"FROM alerts "
+        f"{where_sql} "
+        f"ORDER BY {sort_by} {sort_dir} "
+        f"LIMIT ? OFFSET ?"
+    )
+    select_params: list = params + [page_size, offset]
+    rows = db.execute(select_sql, select_params).fetchall()
+
+    # --- Join name and object_class from catalog_name_map ---
+    results: list[dict] = []
+    for row in rows:
+        (
+            row_id,
+            row_norad_id,
+            row_anomaly_type,
+            row_detection_epoch_utc,
+            row_status,
+            row_nis_value,
+            row_resolution_epoch_utc,
+            row_recalibration_duration_s,
+        ) = row
+        catalog_info: dict = catalog_name_map.get(
+            row_norad_id,
+            {"name": str(row_norad_id), "object_class": "unknown"},
+        )
+        results.append(
+            {
+                "id": row_id,
+                "norad_id": row_norad_id,
+                "name": catalog_info["name"],
+                "object_class": catalog_info["object_class"],
+                "detection_epoch_utc": row_detection_epoch_utc,
+                "anomaly_type": row_anomaly_type,
+                "nis_value": row_nis_value,
+                "status": row_status,
+                "resolution_epoch_utc": row_resolution_epoch_utc,
+                "recalibration_duration_s": row_recalibration_duration_s,
+            }
+        )
+
+    return {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "results": results,
+    }
 
 
 @app.post("/admin/reload-catalog")
@@ -1391,6 +1648,37 @@ async def websocket_live(websocket: WebSocket) -> None:
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "Failed to send initial state for NORAD %d to new client: %s",
+                    norad_id,
+                    exc,
+                )
+
+        # NF-012 track burst: send track_update for every object with filter state
+        # so the newly connected client gets animated tracks immediately.
+        # Each generate_track_samples call runs in a thread pool (asyncio.to_thread)
+        # to avoid blocking the event loop during the ~21s of SGP4 computation.
+        for norad_id, filter_state in list(filter_states.items()):
+            try:
+                last_tle1: Optional[str] = filter_state.get("last_tle_line1")
+                last_tle2: Optional[str] = filter_state.get("last_tle_line2")
+                last_epoch: Optional[datetime.datetime] = filter_state.get("last_epoch_utc")
+                if last_tle1 and last_tle2 and last_epoch:
+                    track_start = datetime.datetime.now(tz=datetime.timezone.utc)
+                    track_samples = await asyncio.to_thread(
+                        processing.generate_track_samples,
+                        tle_line1=last_tle1,
+                        tle_line2=last_tle2,
+                        start_epoch_utc=track_start,
+                    )
+                    track_msg: dict = {
+                        "type": _WS_TYPE_TRACK_UPDATE,
+                        "norad_id": norad_id,
+                        "epoch_utc": track_start.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                        "samples": track_samples,
+                    }
+                    await websocket.send_text(json.dumps(track_msg))
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Failed to send initial track_update for NORAD %d to new client: %s",
                     norad_id,
                     exc,
                 )

@@ -23,6 +23,10 @@ replay:
 verify:
 	python scripts/verify_catalog_altitudes.py
 
+# Validate catalog NORAD IDs and names against Space-Track satcat
+verify-ids:
+	python scripts/verify_catalog_ids.py
+
 # Run demo sequence. Pass args with: make demo ARGS="--act 3"
 demo:
 	python scripts/demo.py --act all $(ARGS)

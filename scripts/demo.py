@@ -86,7 +86,7 @@ or the start of a repositioning burn. Either way — we detected it. A static SG
 prediction would have shown nothing.\""""
 
 _PRESENTER_ACT4: str = """\
-Presenter: "BlackSky Global-7 — a commercial ISR satellite with active DoD contracts —
+Presenter: "BlackSky Global-1 — a commercial ISR satellite with active DoD contracts —
 just repositioned. Cross-track burn, consistent with a collection retasking.
 The system caught it in the same cycle as the Starlink maneuver. No analyst had to
 watch a screen. No threshold had to be manually tuned. The filter flagged it.\""""
@@ -574,7 +574,7 @@ def _inject_conjunction_into_db(
         "tle_line1": syn_line1,
         "tle_line2": syn_line2,
     }
-    ingest.cache_tles(db, [tle_dict], fetched_at_utc=now_utc)
+    ingest.cache_tles(db, [tle_dict], fetched_at_utc=now_utc, source="demo_injection")
     db.close()
 
     print(
@@ -730,7 +730,7 @@ def _inject_maneuver_into_db(
         "tle_line1": syn_tle_line1,
         "tle_line2": syn_tle_line2,
     }
-    ingest.cache_tles(db, [tle_dict], fetched_at_utc=now_utc)
+    ingest.cache_tles(db, [tle_dict], fetched_at_utc=now_utc, source="demo_injection")
     db.close()
 
     print(
@@ -740,13 +740,21 @@ def _inject_maneuver_into_db(
     return True
 
 
-def _clear_synthetic_threat(catalog_path: str, db_path: str) -> None:
-    """Remove NORAD 99999 from catalog.json and the TLE cache.
+def _clear_demo_injections(catalog_path: str, db_path: str) -> None:
+    """Remove all demo-injected objects and synthetic TLEs, restoring clean state.
+
+    Removes:
+    - NORAD 99999 (THREAT-SIM) from catalog.json
+    - All rows with source='demo_injection' from tle_catalog (acts 2, 3, 4)
+    - state_history rows for the maneuvered objects (46075, 47474) that were
+      created after their synthetic TLEs, so the filter resets cleanly on next run
+    - Active/recalibrating alert rows for all demo-affected objects
 
     Args:
         catalog_path: Path to catalog.json.
         db_path: Path to SQLite TLE cache.
     """
+    # --- catalog.json: remove THREAT-SIM entry ---
     try:
         with open(catalog_path, "r", encoding="utf-8") as fh:
             catalog: list = json.load(fh)
@@ -767,17 +775,103 @@ def _clear_synthetic_threat(catalog_path: str, db_path: str) -> None:
 
     try:
         db: sqlite3.Connection = ingest.init_catalog_db(db_path)
-        db.execute(
-            "DELETE FROM tle_catalog WHERE norad_id = ?",
+
+        # --- tle_catalog: remove all demo-injected TLEs (all acts) ---
+        cur = db.execute(
+            "DELETE FROM tle_catalog WHERE source = 'demo_injection'"
+        )
+        demo_tle_removed: int = cur.rowcount
+        db.commit()
+        print(
+            f"[clean] Removed {demo_tle_removed} demo-injected TLE row(s) "
+            "from tle_catalog (source='demo_injection')."
+        )
+
+        # --- state_history: drop entries for maneuvered objects produced after
+        #     the original TLE epoch so their filter resets on next run ---
+        maneuver_norad_ids: list[int] = [
+            _STARLINK_1990_NORAD_ID,
+            _BLACKSKY7_NORAD_ID,
+            _THREAT_NORAD_ID,
+        ]
+        for nid in maneuver_norad_ids:
+            # Find the latest non-demo TLE epoch so we only delete state rows
+            # that were produced AFTER the synthetic injection, not the original ones.
+            row = db.execute(
+                "SELECT MAX(epoch_utc) FROM tle_catalog "
+                "WHERE norad_id = ? AND source != 'demo_injection'",
+                (nid,),
+            ).fetchone()
+            pre_injection_epoch: Optional[str] = row[0] if row else None
+
+            if pre_injection_epoch:
+                cur2 = db.execute(
+                    "DELETE FROM state_history "
+                    "WHERE norad_id = ? AND epoch_utc > ?",
+                    (nid, pre_injection_epoch),
+                )
+                deleted_states: int = cur2.rowcount
+            else:
+                # No real TLE in cache for this object — delete all its state rows.
+                cur2 = db.execute(
+                    "DELETE FROM state_history WHERE norad_id = ?",
+                    (nid,),
+                )
+                deleted_states = cur2.rowcount
+
+            if deleted_states:
+                print(
+                    f"[clean] NORAD {nid}: removed {deleted_states} post-injection "
+                    "state_history row(s)."
+                )
+
+        db.commit()
+
+        # --- alerts: resolve open demo alerts for affected objects ---
+        resolution_ts: str = datetime.datetime.now(
+            datetime.timezone.utc
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        affected_ids_sql: str = ",".join(
+            str(n) for n in [_ISS_NORAD_ID, _STARLINK_1990_NORAD_ID,
+                             _BLACKSKY7_NORAD_ID, _THREAT_NORAD_ID]
+        )
+        cur3 = db.execute(
+            f"UPDATE alerts SET status = 'resolved', "
+            f"resolution_epoch_utc = ? "
+            f"WHERE status IN ('active', 'recalibrating') "
+            f"AND norad_id IN ({affected_ids_sql})",
+            (resolution_ts,),
+        )
+        resolved_alerts: int = cur3.rowcount
+        db.commit()
+        if resolved_alerts:
+            print(f"[clean] Resolved {resolved_alerts} open alert(s) for demo objects.")
+
+        # --- conjunction tables: remove THREAT-SIM rows ---
+        cur4 = db.execute(
+            "DELETE FROM conjunction_risks "
+            "WHERE conjunction_event_id IN ("
+            "  SELECT id FROM conjunction_events "
+            "  WHERE anomalous_norad_id = ?"
+            ")",
+            (_THREAT_NORAD_ID,),
+        )
+        cur5 = db.execute(
+            "DELETE FROM conjunction_events WHERE anomalous_norad_id = ?",
             (_THREAT_NORAD_ID,),
         )
         db.commit()
+        if cur4.rowcount or cur5.rowcount:
+            print(
+                f"[clean] Removed {cur5.rowcount} conjunction event(s) and "
+                f"{cur4.rowcount} risk row(s) for NORAD {_THREAT_NORAD_ID}."
+            )
+
         db.close()
-        print(
-            f"[clean] NORAD {_THREAT_NORAD_ID} ({_THREAT_NAME}) removed from TLE cache."
-        )
+        print("[clean] Demo teardown complete — system restored to pre-demo state.")
+
     except Exception as exc:  # noqa: BLE001
-        print(f"[clean] WARNING: Could not remove from TLE cache — {exc}")
+        print(f"[clean] WARNING: DB cleanup encountered an error — {exc}")
 
 
 # ---------------------------------------------------------------------------
@@ -882,9 +976,9 @@ def act3(base_url: str, catalog_path: str, db_path: str) -> None:
 
 
 def act4(base_url: str, catalog_path: str, db_path: str) -> None:
-    """Act 4 — ISR asset repositioning (BLACKSKY GLOBAL-7, NORAD 47474).
+    """Act 4 — ISR asset repositioning (BLACKSKY GLOBAL-1, NORAD 47474).
 
-    Injects a 5 m/s cross-track delta-V for BLACKSKY GLOBAL-7, then triggers
+    Injects a 5 m/s cross-track delta-V for BLACKSKY GLOBAL-1, then triggers
     a processing cycle.
 
     Args:
@@ -894,7 +988,7 @@ def act4(base_url: str, catalog_path: str, db_path: str) -> None:
     """
     print()
     print("=" * 70)
-    print("[ACT 4] ISR ASSET REPOSITIONING — BLACKSKY GLOBAL-7 (NORAD 47474)")
+    print("[ACT 4] ISR ASSET REPOSITIONING — BLACKSKY GLOBAL-1 (NORAD 47474)")
     print("=" * 70)
     print()
     print(_PRESENTER_ACT4)
@@ -912,7 +1006,7 @@ def act4(base_url: str, catalog_path: str, db_path: str) -> None:
         _post_trigger_process(base_url)
         print()
         print(
-            "[ACT 4] Maneuver injected for BLACKSKY GLOBAL-7. "
+            "[ACT 4] Maneuver injected for BLACKSKY GLOBAL-1. "
             "Cross-track burn detected — consistent with collection retasking."
         )
     else:
@@ -924,8 +1018,9 @@ def act4(base_url: str, catalog_path: str, db_path: str) -> None:
 def act5(base_url: str) -> None:
     """Act 5 — Recalibration / resolution.
 
-    Triggers two processing cycles (with a 5-second pause between) to drive
-    the Kalman filter recalibration cycle and show residuals returning to baseline.
+    Triggers four processing cycles (with pauses between) to drive the Kalman
+    filter recalibration loop. Each cycle the filter updates its state estimate
+    toward the new orbit; by cycle 3-4 residuals and confidence return to nominal.
 
     Args:
         base_url: Backend base URL.
@@ -938,19 +1033,20 @@ def act5(base_url: str) -> None:
     print(_PRESENTER_ACT5)
     print()
 
-    print("[ACT 5] Running first recalibration cycle...")
-    _post_trigger_process(base_url)
+    num_cycles: int = 4
+    pause_s: int = 8
 
-    print("[ACT 5] Pausing 5 seconds before second cycle...")
-    time.sleep(5)
-
-    print("[ACT 5] Running second recalibration cycle...")
-    _post_trigger_process(base_url)
+    for cycle in range(1, num_cycles + 1):
+        print(f"[ACT 5] Recalibration cycle {cycle}/{num_cycles}...")
+        _post_trigger_process(base_url)
+        if cycle < num_cycles:
+            print(f"[ACT 5] Pausing {pause_s}s — watch residuals converge on the chart...")
+            time.sleep(pause_s)
 
     print()
     print(
         "[ACT 5] Recalibration complete. Monitor residual charts — "
-        "confidence should be recovering toward baseline."
+        "alerts should transition active → recalibrating → resolved."
     )
     print()
 
@@ -969,7 +1065,7 @@ def print_all_scripts() -> None:
         ("[ACT 1] NORMAL OPERATIONS", _PRESENTER_ACT1),
         ("[ACT 2] ASAT DEBRIS CONJUNCTION — ISS", _PRESENTER_ACT2),
         ("[ACT 3] UNANNOUNCED STARLINK MANEUVER — STARLINK-1990", _PRESENTER_ACT3),
-        ("[ACT 4] ISR ASSET REPOSITIONING — BLACKSKY GLOBAL-7", _PRESENTER_ACT4),
+        ("[ACT 4] ISR ASSET REPOSITIONING — BLACKSKY GLOBAL-1", _PRESENTER_ACT4),
         ("[ACT 5] RECALIBRATION / RESOLUTION", _PRESENTER_ACT5),
     ]
     print()
@@ -1118,9 +1214,9 @@ def main() -> None:
     if args.clean:
         print()
         print("=" * 70)
-        print("[CLEAN] Removing synthetic objects from catalog and TLE cache...")
+        print("[CLEAN] Restoring pre-demo state...")
         print("=" * 70)
-        _clear_synthetic_threat(catalog_path=catalog_path, db_path=db_path)
+        _clear_demo_injections(catalog_path=catalog_path, db_path=db_path)
         print(
             "[CLEAN] Done. Run `git checkout data/catalog/catalog.json` "
             "to restore the clean git state."

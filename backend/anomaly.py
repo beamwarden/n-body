@@ -452,7 +452,7 @@ def get_active_anomalies(db: sqlite3.Connection) -> list[dict]:
         """
         SELECT id, norad_id, detection_epoch_utc, anomaly_type, nis_value, status
         FROM alerts
-        WHERE status != 'resolved'
+        WHERE status NOT IN ('resolved', 'dismissed')
         ORDER BY id ASC
         """
     )
@@ -471,3 +471,35 @@ def get_active_anomalies(db: sqlite3.Connection) -> list[dict]:
             }
         )
     return results
+
+
+def dismiss_alert(
+    db: sqlite3.Connection,
+    norad_id: int,
+    detection_epoch_utc: str,
+) -> bool:
+    """Mark an alert as dismissed so it is excluded from future active queries.
+
+    Looks up the alert by (norad_id, detection_epoch_utc) and sets its status
+    to 'dismissed'. Dismissed alerts are never re-shown on page reload.
+
+    Args:
+        db: Open SQLite connection.
+        norad_id: NORAD catalog ID of the alerted object.
+        detection_epoch_utc: ISO-8601 UTC string matching detection_epoch_utc
+            in the alerts table (e.g. '2026-04-15T12:34:56Z').
+
+    Returns:
+        True if a row was updated, False if no matching alert was found.
+    """
+    cursor = db.execute(
+        """
+        UPDATE alerts
+        SET status = 'dismissed'
+        WHERE norad_id = ? AND detection_epoch_utc = ?
+          AND status NOT IN ('resolved', 'dismissed')
+        """,
+        (norad_id, detection_epoch_utc),
+    )
+    db.commit()
+    return cursor.rowcount > 0
