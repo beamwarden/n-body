@@ -1,0 +1,70 @@
+name: CI — main
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Run unit tests
+        run: pytest -m unit -v --tb=short
+
+  build:
+    name: Build checks
+    runs-on: ubuntu-latest
+    needs: unit-tests
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Syntax check
+        run: python -m py_compile backend/main.py backend/processing.py backend/kalman.py backend/propagator.py backend/anomaly.py backend/ingest.py backend/conjunction.py
+
+      - name: Type check
+        run: mypy backend/ --ignore-missing-imports
+
+  integration-tests:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    needs: build
+
+    env:
+      SPACETRACK_USER: ${{ secrets.SPACETRACK_USER }}
+      SPACETRACK_PASS: ${{ secrets.SPACETRACK_PASS }}
+      CESIUM_ION_TOKEN: ${{ secrets.CESIUM_ION_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Run integration tests
+        run: pytest -m integration -v --tb=short
