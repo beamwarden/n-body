@@ -1,23 +1,24 @@
 """Tests for backend/kalman.py."""
 import datetime
+from unittest.mock import patch
+
 import numpy as np
 import pytest
-from unittest.mock import patch
 
 from backend import kalman
 from backend.kalman import (
     CHI2_THRESHOLD_6DOF,
-    OBJECT_CLASS_Q,
-    OBJECT_CLASS_DEBRIS,
     OBJECT_CLASS_ACTIVE,
+    OBJECT_CLASS_DEBRIS,
+    OBJECT_CLASS_Q,
 )
 
 # Realistic ISS-like initial state: LEO, units km and km/s
 ISS_STATE = np.array([6728.0, 0.0, 0.0, 0.0, 7.67, 0.0], dtype=np.float64)
 
 # Fixed UTC epoch for tests
-T0 = datetime.datetime(2026, 1, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
-T1 = datetime.datetime(2026, 1, 1, 0, 30, 0, tzinfo=datetime.timezone.utc)
+T0 = datetime.datetime(2026, 1, 1, 0, 0, 0, tzinfo=datetime.UTC)
+T1 = datetime.datetime(2026, 1, 1, 0, 30, 0, tzinfo=datetime.UTC)
 
 # ISS TLE used for tests that exercise predict() path
 ISS_TLE_LINE1 = "1 25544U 98067A   24045.51773148  .00015204  00000+0  27364-3 0  9996"
@@ -105,10 +106,10 @@ def test_nis_within_threshold_for_consistent_filter() -> None:
     fs = kalman.init_filter(ISS_STATE, T0)
 
     for i in range(3):
-        t_obs = datetime.datetime(2026, 1, 1, i, 30, 0,
-                                  tzinfo=datetime.timezone.utc)
+        _t_obs = datetime.datetime(2026, 1, 1, i, 30, 0,
+                                   tzinfo=datetime.UTC)
         t_pred = datetime.datetime(2026, 1, 1, i + 1, 0, 0,
-                                   tzinfo=datetime.timezone.utc)
+                                   tzinfo=datetime.UTC)
         # Propagated state and observation are identical (zero innovation)
         with patch("backend.propagator.tle_to_state_vector_eci_km",
                    return_value=ISS_STATE.copy()):
@@ -306,10 +307,9 @@ def test_get_state_returns_copies() -> None:
 def test_update_cycle_under_100ms() -> None:
     """Single predict+update cycle completes in under 100ms (NF-001)."""
     import time
-    fs = kalman.init_filter(ISS_STATE, T0)
     times = []
 
-    for i in range(100):
+    for _ in range(100):
         # Re-init each iteration to avoid compounding epoch drift
         fs_i = kalman.init_filter(ISS_STATE, T0)
         t_start = time.perf_counter()

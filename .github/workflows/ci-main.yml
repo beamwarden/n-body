@@ -12,16 +12,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.11"
-          cache: pip
+          enable-cache: true
 
       - name: Install dependencies
-        run: pip install -r backend/requirements.txt
+        run: uv sync --group dev
 
       - name: Run unit tests
-        run: pytest -m unit -v --tb=short
+        run: uv run pytest -m unit -v --tb=short
 
   build:
     name: Build checks
@@ -31,19 +30,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.11"
-          cache: pip
+          enable-cache: true
 
       - name: Install dependencies
-        run: pip install -r backend/requirements.txt
+        run: uv sync --group dev
+
+      - name: Lint (ruff)
+        run: uv run ruff check backend/ tests/
+
+      - name: Format check (ruff)
+        run: uv run ruff format --check backend/ tests/
 
       - name: Syntax check
-        run: python -m py_compile backend/main.py backend/processing.py backend/kalman.py backend/propagator.py backend/anomaly.py backend/ingest.py backend/conjunction.py
+        run: uv run python -m py_compile backend/main.py backend/processing.py backend/kalman.py backend/propagator.py backend/anomaly.py backend/ingest.py backend/conjunction.py
 
       - name: Type check
-        run: mypy backend/ --ignore-missing-imports
+        run: uv run mypy backend/ --ignore-missing-imports
 
   integration-tests:
     name: Integration tests
@@ -58,13 +62,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.11"
-          cache: pip
+          enable-cache: true
 
       - name: Install dependencies
-        run: pip install -r backend/requirements.txt
+        run: uv sync --group dev
 
       - name: Run integration tests
-        run: pytest -m integration -v --tb=short
+        run: uv run pytest -m integration -v --tb=short

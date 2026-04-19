@@ -30,7 +30,6 @@ import json
 import logging
 import os
 import sqlite3
-from typing import Optional
 
 import numpy as np
 from dotenv import load_dotenv
@@ -38,23 +37,22 @@ from dotenv import load_dotenv
 load_dotenv()  # load .env from repo root (no-op if file absent or vars already set)
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 import backend.anomaly as anomaly
 import backend.conjunction as conjunction
 import backend.ingest as ingest
 import backend.kalman as kalman
-import backend.propagator as propagator
 import backend.processing as processing
+import backend.propagator as propagator
 from backend.processing import (
-    _build_ws_message,
-    _ensure_state_history_table,
-    _insert_state_history_row,
-    WS_TYPE_STATE_UPDATE,
     WS_TYPE_ANOMALY,
     WS_TYPE_RECALIBRATION,
+    WS_TYPE_STATE_UPDATE,
     WS_TYPE_TRACK_UPDATE,
+    _build_ws_message,
+    _ensure_state_history_table,
 )
 
 logger = logging.getLogger(__name__)
@@ -312,7 +310,7 @@ async def _run_conjunction_screening(
         # Parse epoch string to UTC-aware datetime.
         screening_epoch_utc: datetime.datetime = datetime.datetime.strptime(
             screening_epoch_str, "%Y-%m-%dT%H:%M:%SZ"
-        ).replace(tzinfo=datetime.timezone.utc)
+        ).replace(tzinfo=datetime.UTC)
 
         # Build other_objects list from filter_states: include every non-anomalous
         # object that has last_tle_line1 and last_tle_line2 set.
@@ -508,7 +506,7 @@ def _process_single_object(
         norad_id: NORAD catalog ID (int, already extracted from entry).
         filter_states: Mutable dict of filter state dicts keyed by norad_id.
     """
-    tle_record: Optional[dict] = ingest.get_latest_tle(db, norad_id)
+    tle_record: dict | None = ingest.get_latest_tle(db, norad_id)
     if tle_record is None:
         logger.warning("No cached TLE for NORAD %d — skipping", norad_id)
         return
@@ -528,7 +526,7 @@ def _process_single_object(
     # Phase 2 (plan step 2): if an anomaly was detected, schedule conjunction screening.
     # Detect anomaly by checking the returned message list (no changes to processing.py).
     # tle_record is already in scope from line 290 above.
-    anomaly_message: Optional[dict] = next(
+    anomaly_message: dict | None = next(
         (m for m in messages if m.get("type") == WS_TYPE_ANOMALY), None
     )
     if anomaly_message is not None:
@@ -717,22 +715,22 @@ async def get_catalog() -> list[dict]:
         if fs is not None:
             state = kalman.get_state(fs)
             epoch_dt: datetime.datetime = state["last_epoch_utc"]
-            last_update_epoch_utc: Optional[str] = epoch_dt.strftime(
+            last_update_epoch_utc: str | None = epoch_dt.strftime(
                 "%Y-%m-%dT%H:%M:%SZ"
             )
-            confidence: Optional[float] = float(state["confidence"])
+            confidence: float | None = float(state["confidence"])
             state_eci_km = state["state_eci_km"]
             cov_km2 = state["covariance_km2"]
-            eci_km: Optional[list] = state_eci_km[:3].tolist()
-            eci_km_s: Optional[list] = state_eci_km[3:].tolist()
-            covariance_diagonal_km2: Optional[list] = [
+            eci_km: list | None = state_eci_km[:3].tolist()
+            eci_km_s: list | None = state_eci_km[3:].tolist()
+            covariance_diagonal_km2: list | None = [
                 float(cov_km2[0, 0]),
                 float(cov_km2[1, 1]),
                 float(cov_km2[2, 2]),
             ]
-            nis: Optional[float] = float(state["nis"])
-            anomaly_flag: Optional[bool] = bool(state["anomaly_flag"])
-            innovation_eci_km: Optional[list] = state["innovation_eci_km"].tolist()
+            nis: float | None = float(state["nis"])
+            anomaly_flag: bool | None = bool(state["anomaly_flag"])
+            innovation_eci_km: list | None = state["innovation_eci_km"].tolist()
         else:
             # No filter yet — try the cached TLE for last epoch.
             tle_record = ingest.get_latest_tle(db, norad_id)
@@ -770,7 +768,7 @@ async def get_catalog() -> list[dict]:
 @app.get("/object/{norad_id}/history")
 async def get_object_history(
     norad_id: int,
-    since_utc: Optional[str] = None,
+    since_utc: str | None = None,
 ) -> list[dict]:
     """Return time-series of state updates and NIS values for one object.
 
@@ -942,7 +940,7 @@ async def get_active_alerts() -> list[dict]:
         norad_id: int = row["norad_id"]
         # Build a WS-compatible anomaly message from the DB record.
         # Use filter state for position/confidence if available.
-        fs: Optional[dict] = app.state.filter_states.get(norad_id)
+        fs: dict | None = app.state.filter_states.get(norad_id)
         if fs is not None:
             from backend.kalman import get_state
             state = get_state(fs)
@@ -1159,7 +1157,7 @@ async def get_object_track(
     db: sqlite3.Connection = app.state.db
 
     # Retrieve latest cached TLE. Returns 404 if none.
-    tle_record: Optional[dict] = ingest.get_latest_tle(db, norad_id)
+    tle_record: dict | None = ingest.get_latest_tle(db, norad_id)
     if tle_record is None:
         raise HTTPException(
             status_code=404,
@@ -1172,7 +1170,7 @@ async def get_object_track(
     # Reference epoch is always now so the track is centered on the current
     # satellite position, matching the SampledPositionProperty animation window.
     reference_epoch_utc: datetime.datetime = datetime.datetime.now(
-        tz=datetime.timezone.utc
+        tz=datetime.UTC
     )
 
     # --- Backward track ---
@@ -1199,6 +1197,7 @@ async def get_object_track(
     # --- Forward track ---
     # Range: step_s, 2*step_s, ..., seconds_forward (inclusive if divisible).
     forward_track: list[dict] = []
+    filter_state: dict | None = app.state.filter_states.get(norad_id)
     if seconds_forward > 0:
         # Nominal update interval (seconds) used as the Q calibration reference.
         # Q was tuned assuming a 30-minute (1800s) update cycle.
@@ -1338,7 +1337,7 @@ async def admin_trigger_process() -> dict:
             # was detected. Only trigger on the last TLE for each object to avoid
             # redundant screenings from intermediate replay TLEs.
             if is_last:
-                admin_anomaly_msg: Optional[dict] = next(
+                admin_anomaly_msg: dict | None = next(
                     (m for m in messages if m.get("type") == WS_TYPE_ANOMALY), None
                 )
                 if admin_anomaly_msg is not None:
@@ -1382,7 +1381,7 @@ async def admin_trigger_ingest() -> dict:
 
     try:
         inserted: int = await ingest.poll_once(db, catalog_entries, event_bus=event_bus)
-    except EnvironmentError as exc:
+    except OSError as exc:
         raise HTTPException(status_code=503, detail=f"Credential error: {exc}") from exc
     except Exception as exc:  # noqa: BLE001
         logger.error("admin_trigger_ingest error: %s", exc, exc_info=True)
@@ -1394,13 +1393,13 @@ async def admin_trigger_ingest() -> dict:
 
 @app.get("/events/history")
 async def get_events_history(
-    q: Optional[str] = None,
-    type: Optional[str] = None,
-    status: Optional[str] = None,
-    since_utc: Optional[str] = None,
-    until_utc: Optional[str] = None,
-    sort_by: Optional[str] = None,
-    sort_dir: Optional[str] = None,
+    q: str | None = None,
+    type: str | None = None,
+    status: str | None = None,
+    since_utc: str | None = None,
+    until_utc: str | None = None,
+    sort_by: str | None = None,
+    sort_dir: str | None = None,
     page: int = 1,
     page_size: int = 25,
 ) -> dict:
@@ -1463,7 +1462,7 @@ async def get_events_history(
         }
 
     # --- Resolve q param to a set of matching NORAD IDs ---
-    matching_norad_ids: Optional[set[int]] = None
+    matching_norad_ids: set[int] | None = None
     if q is not None and q.strip() != "":
         q_stripped: str = q.strip()
         matched: set[int] = set()
@@ -1658,11 +1657,11 @@ async def websocket_live(websocket: WebSocket) -> None:
         # to avoid blocking the event loop during the ~21s of SGP4 computation.
         for norad_id, filter_state in list(filter_states.items()):
             try:
-                last_tle1: Optional[str] = filter_state.get("last_tle_line1")
-                last_tle2: Optional[str] = filter_state.get("last_tle_line2")
-                last_epoch: Optional[datetime.datetime] = filter_state.get("last_epoch_utc")
+                last_tle1: str | None = filter_state.get("last_tle_line1")
+                last_tle2: str | None = filter_state.get("last_tle_line2")
+                last_epoch: datetime.datetime | None = filter_state.get("last_epoch_utc")
                 if last_tle1 and last_tle2 and last_epoch:
-                    track_start = datetime.datetime.now(tz=datetime.timezone.utc)
+                    track_start = datetime.datetime.now(tz=datetime.UTC)
                     track_samples = await asyncio.to_thread(
                         processing.generate_track_samples,
                         tle_line1=last_tle1,

@@ -1,0 +1,54 @@
+[project]
+name = "ne-body"
+version = "0.1.1"
+description = "Near Earth body — closed-loop Space Situational Awareness platform"
+requires-python = ">=3.11"
+dependencies = [
+    "astropy>=6.0",
+    "fastapi>=0.104.0",
+    "filterpy>=1.4.5",
+    "httpx>=0.25.0",
+    "numpy>=1.26.0",
+    "python-dotenv>=1.0.0",
+    "scipy>=1.11.0",
+    "sgp4>=2.22",
+    "uvicorn[standard]>=0.24.0",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.7.0",
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.23.0",
+    "ruff>=0.6.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "W",   # pycodestyle warnings
+]
+ignore = [
+    "E501",  # line too long — handled by formatter, not enforced as error
+    "B008",  # do not perform function call in default argument (FastAPI Depends pattern)
+]
+
+[tool.ruff.lint.per-file-ignores]
+# load_dotenv() must run before backend imports so modules see env vars at import time
+"backend/main.py" = ["E402"]
+# Late os import is placed after module-level constants that depend on it
+"backend/processing.py" = ["E402"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["backend"]

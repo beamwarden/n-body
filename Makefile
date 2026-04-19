@@ -1,4 +1,4 @@
-.PHONY: backend frontend dev replay verify demo test
+.PHONY: backend frontend dev replay verify demo test lint fmt
 
 # Start the backend API server (port 8000)
 backend:
@@ -45,7 +45,15 @@ reload-catalog:
 
 # Run tests
 test:
-	pytest tests/ -v
+	uv run pytest tests/ -v
+
+# Lint with ruff
+lint:
+	uv run ruff check backend/ tests/
+
+# Format with ruff (in-place)
+fmt:
+	uv run ruff format backend/ tests/
 
 # Kill anything holding port 8000
 kill-backend:

@@ -2,12 +2,10 @@
 
 Covers F-040, F-041, F-042, F-043, F-044, NF-012.
 """
-import asyncio
 import datetime
 import json
 import sqlite3
-from typing import Optional
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import numpy as np
 import pytest
@@ -15,16 +13,14 @@ from fastapi.testclient import TestClient
 
 import backend.kalman as kalman
 from backend.main import (
-    ConnectionManager,
-    MAX_WS_CONNECTIONS,
     _WS_TYPE_ANOMALY,
     _WS_TYPE_RECALIBRATION,
     _WS_TYPE_STATE_UPDATE,
+    ConnectionManager,
     _build_ws_message,
     _ensure_state_history_table,
     app,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures and helpers
@@ -33,7 +29,7 @@ from backend.main import (
 
 def _make_synthetic_filter_state(
     norad_id: int = 25544,
-    epoch_utc: Optional[datetime.datetime] = None,
+    epoch_utc: datetime.datetime | None = None,
 ) -> dict:
     """Create a real filter state dict with synthetic initial state.
 
@@ -41,7 +37,7 @@ def _make_synthetic_filter_state(
     get_state(), _build_ws_message(), etc. work correctly.
     """
     if epoch_utc is None:
-        epoch_utc = datetime.datetime(2026, 3, 28, 19, 0, 0, tzinfo=datetime.timezone.utc)
+        epoch_utc = datetime.datetime(2026, 3, 28, 19, 0, 0, tzinfo=datetime.UTC)
     # ISS-like ECI position (km) and velocity (km/s), approximate.
     state_eci_km = np.array(
         [6378.0 + 400.0, 0.0, 0.0, 0.0, 7.67, 0.0], dtype=np.float64
@@ -86,7 +82,7 @@ def _seed_alerts_table(db: sqlite3.Connection, norad_id: int, count: int) -> Non
         )
         """
     )
-    base_epoch = datetime.datetime(2026, 3, 28, 12, 0, 0, tzinfo=datetime.timezone.utc)
+    base_epoch = datetime.datetime(2026, 3, 28, 12, 0, 0, tzinfo=datetime.UTC)
     for i in range(count):
         epoch = base_epoch + datetime.timedelta(minutes=30 * i)
         db.execute(
@@ -101,8 +97,8 @@ def _seed_alerts_table(db: sqlite3.Connection, norad_id: int, count: int) -> Non
 
 def _setup_app_state_for_catalog(
     norad_ids: list[int],
-    filter_states: Optional[dict] = None,
-    db: Optional[sqlite3.Connection] = None,
+    filter_states: dict | None = None,
+    db: sqlite3.Connection | None = None,
 ) -> None:
     """Patch app.state for catalog/history endpoint tests.
 
@@ -300,7 +296,7 @@ def test_websocket_connects() -> None:
     with TestClient(app) as client:
         # Set state inside the context so the lifespan startup does not override it.
         _setup_app_state_for_catalog([25544])
-        with client.websocket_connect("/ws/live") as ws:
+        with client.websocket_connect("/ws/live"):
             # Connection accepted; no error raised.
             pass
 
@@ -363,9 +359,9 @@ def test_websocket_message_schema() -> None:
     assert isinstance(msg["covariance_diagonal_km2"], list)
     assert len(msg["covariance_diagonal_km2"]) == 3
 
-    assert isinstance(msg["nis"], (int, float))
+    assert isinstance(msg["nis"], int | float)
     assert isinstance(msg["innovation_eci_km"], list) and len(msg["innovation_eci_km"]) == 6
-    assert isinstance(msg["confidence"], (int, float))
+    assert isinstance(msg["confidence"], int | float)
     # anomaly_type must be str or None
     assert msg.get("anomaly_type") is None or isinstance(msg["anomaly_type"], str)
 

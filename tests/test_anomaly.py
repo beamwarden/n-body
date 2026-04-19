@@ -9,7 +9,6 @@ from backend.anomaly import (
     ANOMALY_DIVERGENCE,
     ANOMALY_DRAG,
     ANOMALY_MANEUVER,
-    MANEUVER_CONSECUTIVE_CYCLES,
     _count_consecutive_tail_exceedances,
     classify_anomaly,
     ensure_alerts_table,
@@ -64,7 +63,7 @@ def sample_innovation_eci_km() -> "np.ndarray":
 @pytest.fixture
 def utc_epoch() -> datetime.datetime:
     """A representative UTC-aware detection epoch."""
-    return datetime.datetime(2026, 3, 28, 19, 0, 0, tzinfo=datetime.timezone.utc)
+    return datetime.datetime(2026, 3, 28, 19, 0, 0, tzinfo=datetime.UTC)
 
 
 # ---------------------------------------------------------------------------
@@ -474,8 +473,8 @@ def test_datetime_round_trip_preserves_timezone(
     db: sqlite3.Connection,
 ) -> None:
     """A UTC-aware datetime stored and retrieved retains its timezone offset."""
-    epoch = datetime.datetime(2026, 3, 28, 12, 34, 56, tzinfo=datetime.timezone.utc)
-    row_id = record_anomaly(
+    epoch = datetime.datetime(2026, 3, 28, 12, 34, 56, tzinfo=datetime.UTC)
+    _ = record_anomaly(
         db=db,
         norad_id=12345,
         detection_epoch_utc=epoch,
