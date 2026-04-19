@@ -10,6 +10,7 @@ F-011 mandates ECI J2000. Manual implementation of the IAU precession/nutation m
 would be error-prone and hard to validate; astropy provides a battle-tested, correct
 implementation. See docs/plans/2026-03-28-propagator.md Phase 1 for full justification.
 """
+
 import datetime
 
 import astropy.units as u
@@ -83,18 +84,24 @@ def _teme_to_eci_j2000(
     gcrs_coord = teme_coord.transform_to(GCRS(obstime=obstime))
 
     gcrs_cartesian = gcrs_coord.cartesian
-    position_eci_km = np.array([
-        gcrs_cartesian.x.to(u.km).value,
-        gcrs_cartesian.y.to(u.km).value,
-        gcrs_cartesian.z.to(u.km).value,
-    ], dtype=np.float64)
+    position_eci_km = np.array(
+        [
+            gcrs_cartesian.x.to(u.km).value,
+            gcrs_cartesian.y.to(u.km).value,
+            gcrs_cartesian.z.to(u.km).value,
+        ],
+        dtype=np.float64,
+    )
 
     gcrs_velocity = gcrs_cartesian.differentials["s"]
-    velocity_eci_km_s = np.array([
-        gcrs_velocity.d_x.to(u.km / u.s).value,
-        gcrs_velocity.d_y.to(u.km / u.s).value,
-        gcrs_velocity.d_z.to(u.km / u.s).value,
-    ], dtype=np.float64)
+    velocity_eci_km_s = np.array(
+        [
+            gcrs_velocity.d_x.to(u.km / u.s).value,
+            gcrs_velocity.d_y.to(u.km / u.s).value,
+            gcrs_velocity.d_z.to(u.km / u.s).value,
+        ],
+        dtype=np.float64,
+    )
 
     return position_eci_km, velocity_eci_km_s
 
@@ -127,8 +134,7 @@ def propagate_tle(
     """
     if epoch_utc.tzinfo is None or epoch_utc.utcoffset() is None:
         raise ValueError(
-            "epoch_utc must be UTC-aware (tzinfo set to datetime.timezone.utc). "
-            "Received a naive datetime."
+            "epoch_utc must be UTC-aware (tzinfo set to datetime.timezone.utc). Received a naive datetime."
         )
 
     # WGS72 is used deliberately: TLE elements are produced with WGS72 constants.
@@ -155,6 +161,7 @@ def propagate_tle(
     propagation_days = abs((jd_whole + jd_frac) - tle_jd)
     if propagation_days > _PROPAGATION_WARN_DAYS:
         import warnings
+
         warnings.warn(
             f"Propagation interval {propagation_days:.1f} days exceeds "
             f"{_PROPAGATION_WARN_DAYS} days from TLE epoch. SGP4 accuracy degrades "
@@ -162,9 +169,7 @@ def propagate_tle(
             stacklevel=2,
         )
 
-    error_code, position_teme_km_raw, velocity_teme_km_s_raw = satrec.sgp4(
-        jd_whole, jd_frac
-    )
+    error_code, position_teme_km_raw, velocity_teme_km_s_raw = satrec.sgp4(jd_whole, jd_frac)
 
     if error_code != 0:
         error_msg = _SGP4_ERRORS.get(error_code, f"SGP4 error code {error_code}")
@@ -173,9 +178,7 @@ def propagate_tle(
     position_teme_km = np.array(position_teme_km_raw, dtype=np.float64)
     velocity_teme_km_s = np.array(velocity_teme_km_s_raw, dtype=np.float64)
 
-    position_eci_km, velocity_eci_km_s = _teme_to_eci_j2000(
-        position_teme_km, velocity_teme_km_s, epoch_utc
-    )
+    position_eci_km, velocity_eci_km_s = _teme_to_eci_j2000(position_teme_km, velocity_teme_km_s, epoch_utc)
 
     return position_eci_km, velocity_eci_km_s
 
@@ -235,9 +238,7 @@ def tle_epoch_utc(tle_line1: str) -> datetime.datetime:
         year_2digit = int(epoch_field[:2])
         day_of_year_frac = float(epoch_field[2:])
     except (ValueError, IndexError) as exc:
-        raise ValueError(
-            f"Cannot parse TLE epoch from line 1 field '{tle_line1[18:32]!r}': {exc}"
-        ) from exc
+        raise ValueError(f"Cannot parse TLE epoch from line 1 field '{tle_line1[18:32]!r}': {exc}") from exc
 
     # Apply TLE 2-digit year convention.
     if year_2digit <= 56:
@@ -247,8 +248,8 @@ def tle_epoch_utc(tle_line1: str) -> datetime.datetime:
 
     # day_of_year_frac is 1-based: 1.0 = Jan 1 00:00:00.
     # datetime ordinal for Jan 0 of the year + integer day gives the correct date.
-    day_int = int(day_of_year_frac)          # integer day of year (1-based)
-    frac_day = day_of_year_frac - day_int    # fractional remainder of that day
+    day_int = int(day_of_year_frac)  # integer day of year (1-based)
+    frac_day = day_of_year_frac - day_int  # fractional remainder of that day
 
     # Build the base date: Jan 1 of year + (day_int - 1) days.
     base_date = datetime.datetime(year_4digit, 1, 1, tzinfo=datetime.UTC)
@@ -297,8 +298,7 @@ def eci_to_geodetic(
     """
     if epoch_utc.tzinfo is None or epoch_utc.utcoffset() is None:
         raise ValueError(
-            "epoch_utc must be UTC-aware (tzinfo set to datetime.timezone.utc). "
-            "Received a naive datetime."
+            "epoch_utc must be UTC-aware (tzinfo set to datetime.timezone.utc). Received a naive datetime."
         )
 
     obstime = Time(epoch_utc, scale="utc")
@@ -312,6 +312,7 @@ def eci_to_geodetic(
 
     # Transform to ITRS (Earth-fixed) for geodetic extraction.
     from astropy.coordinates import ITRS
+
     itrs_coord = gcrs_coord.transform_to(ITRS(obstime=obstime))
 
     earth_location = itrs_coord.earth_location

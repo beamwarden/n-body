@@ -1,4 +1,5 @@
 """Auto-mark tests as unit or integration based on module name."""
+
 import pytest
 
 _INTEGRATION_MODULES = {

@@ -18,6 +18,7 @@ WebSocket message format (architecture Section 3.5):
     "anomaly_type": null | "maneuver" | "drag_anomaly" | "filter_divergence"
   }
 """
+
 # DEVIATION from plan docs/plans/2026-03-28-initial-scaffold.md step 11:
 # Plan noted that @app.on_event("startup"/"shutdown") decorators are deprecated
 # in favor of the lifespan context manager pattern. Per the plan's own mitigation
@@ -128,9 +129,7 @@ def _ensure_conjunction_tables(db: sqlite3.Connection) -> None:
     db.commit()
 
 
-def _persist_conjunction_result(
-    db: sqlite3.Connection, result: dict
-) -> int:
+def _persist_conjunction_result(db: sqlite3.Connection, result: dict) -> int:
     """Insert a conjunction screening result into the SQLite persistence tables.
 
     Inserts one row into conjunction_events and one row per risk entry into
@@ -251,9 +250,7 @@ class ConnectionManager:
             try:
                 await ws.send_text(message_text)
             except Exception as exc:  # noqa: BLE001
-                logger.warning(
-                    "WebSocket broadcast failed for client, removing: %s", exc
-                )
+                logger.warning("WebSocket broadcast failed for client, removing: %s", exc)
                 failed.append(ws)
         for ws in failed:
             self._connections.discard(ws)
@@ -279,9 +276,7 @@ ws_manager = ConnectionManager()
 # ---------------------------------------------------------------------------
 
 
-async def _run_conjunction_screening(
-    app: FastAPI, screening_inputs: dict
-) -> None:
+async def _run_conjunction_screening(app: FastAPI, screening_inputs: dict) -> None:
     """Async fire-and-forget task that runs conjunction screening off the event loop.
 
     Builds the other_objects list and catalog_name_map from current app state,
@@ -332,8 +327,7 @@ async def _run_conjunction_screening(
 
         # Build catalog_name_map from catalog_entries.
         catalog_name_map: dict[int, str] = {
-            int(e["norad_id"]): e.get("name", str(e["norad_id"]))
-            for e in app.state.catalog_entries
+            int(e["norad_id"]): e.get("name", str(e["norad_id"])) for e in app.state.catalog_entries
         }
 
         logger.info(
@@ -363,8 +357,7 @@ async def _run_conjunction_screening(
         await ws_manager.broadcast(result)
 
         logger.info(
-            "_run_conjunction_screening: complete for NORAD %d — "
-            "first_order=%d second_order=%d",
+            "_run_conjunction_screening: complete for NORAD %d — first_order=%d second_order=%d",
             anomalous_norad_id,
             len(result.get("first_order", [])),
             len(result.get("second_order", [])),
@@ -404,9 +397,7 @@ async def _ingest_loop_task(app: FastAPI) -> None:
             logger.info("_ingest_loop_task cancelled, shutting down cleanly.")
             return
         except Exception as exc:  # noqa: BLE001
-            logger.error(
-                "_ingest_loop_task encountered an error: %s — restarting in 60s", exc
-            )
+            logger.error("_ingest_loop_task encountered an error: %s — restarting in 60s", exc)
             try:
                 await asyncio.sleep(60)
             except asyncio.CancelledError:
@@ -475,9 +466,7 @@ async def _processing_loop_task(app: FastAPI) -> None:
                         exc,
                     )
                 else:
-                    logger.error(
-                        "Error processing NORAD %d: %s", norad_id, exc, exc_info=True
-                    )
+                    logger.error("Error processing NORAD %d: %s", norad_id, exc, exc_info=True)
                 continue
 
         app.state.event_bus.task_done()
@@ -526,9 +515,7 @@ def _process_single_object(
     # Phase 2 (plan step 2): if an anomaly was detected, schedule conjunction screening.
     # Detect anomaly by checking the returned message list (no changes to processing.py).
     # tle_record is already in scope from line 290 above.
-    anomaly_message: dict | None = next(
-        (m for m in messages if m.get("type") == WS_TYPE_ANOMALY), None
-    )
+    anomaly_message: dict | None = next((m for m in messages if m.get("type") == WS_TYPE_ANOMALY), None)
     if anomaly_message is not None:
         screening_inputs: dict = {
             "anomalous_norad_id": norad_id,
@@ -536,9 +523,7 @@ def _process_single_object(
             "tle_line1": tle_record["tle_line1"],
             "tle_line2": tle_record["tle_line2"],
         }
-        asyncio.get_event_loop().create_task(
-            _run_conjunction_screening(app, screening_inputs)
-        )
+        asyncio.get_event_loop().create_task(_run_conjunction_screening(app, screening_inputs))
 
 
 # ---------------------------------------------------------------------------
@@ -555,9 +540,7 @@ async def lifespan(app: FastAPI):
     """
     # --- STARTUP ---
     db_path: str = os.environ.get("NBODY_DB_PATH") or "data/catalog/tle_cache.db"
-    catalog_config_path: str = (
-        os.environ.get("NBODY_CATALOG_CONFIG") or "data/catalog/catalog.json"
-    )
+    catalog_config_path: str = os.environ.get("NBODY_CATALOG_CONFIG") or "data/catalog/catalog.json"
 
     logger.info("ne-body startup: db_path=%s catalog=%s", db_path, catalog_config_path)
 
@@ -715,9 +698,7 @@ async def get_catalog() -> list[dict]:
         if fs is not None:
             state = kalman.get_state(fs)
             epoch_dt: datetime.datetime = state["last_epoch_utc"]
-            last_update_epoch_utc: str | None = epoch_dt.strftime(
-                "%Y-%m-%dT%H:%M:%SZ"
-            )
+            last_update_epoch_utc: str | None = epoch_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
             confidence: float | None = float(state["confidence"])
             state_eci_km = state["state_eci_km"]
             cov_km2 = state["covariance_km2"]
@@ -943,11 +924,12 @@ async def get_active_alerts() -> list[dict]:
         fs: dict | None = app.state.filter_states.get(norad_id)
         if fs is not None:
             from backend.kalman import get_state
+
             state = get_state(fs)
             eci_km = state["state_eci_km"][:3].tolist()
             eci_km_s = state["state_eci_km"][3:].tolist()
             cov = state["covariance_km2"]
-            cov_diag = [float(cov[0,0]), float(cov[1,1]), float(cov[2,2])]
+            cov_diag = [float(cov[0, 0]), float(cov[1, 1]), float(cov[2, 2])]
             confidence = float(state["confidence"])
         else:
             eci_km = [0.0, 0.0, 0.0]
@@ -955,18 +937,20 @@ async def get_active_alerts() -> list[dict]:
             cov_diag = [1000.0, 1000.0, 1000.0]
             confidence = 0.0
 
-        result.append({
-            "type": "anomaly",
-            "norad_id": norad_id,
-            "epoch_utc": row["detection_epoch_utc"],
-            "anomaly_type": row["anomaly_type"],
-            "nis": row["nis_value"],
-            "innovation_eci_km": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            "confidence": confidence,
-            "eci_km": eci_km,
-            "eci_km_s": eci_km_s,
-            "covariance_diagonal_km2": cov_diag,
-        })
+        result.append(
+            {
+                "type": "anomaly",
+                "norad_id": norad_id,
+                "epoch_utc": row["detection_epoch_utc"],
+                "anomaly_type": row["anomaly_type"],
+                "nis": row["nis_value"],
+                "innovation_eci_km": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                "confidence": confidence,
+                "eci_km": eci_km,
+                "eci_km_s": eci_km_s,
+                "covariance_diagonal_km2": cov_diag,
+            }
+        )
 
     return result
 
@@ -1039,15 +1023,12 @@ async def get_object_conjunctions(norad_id: int) -> list[dict]:
 
     # Build name map from catalog entries for risk entry name lookup.
     catalog_name_map: dict[int, str] = {
-        int(e["norad_id"]): e.get("name", str(e["norad_id"]))
-        for e in app.state.catalog_entries
+        int(e["norad_id"]): e.get("name", str(e["norad_id"])) for e in app.state.catalog_entries
     }
 
     results: list[dict] = []
     for event_row in events:
-        event_id, anomalous_norad_id, screening_epoch_utc, horizon_s, threshold_km = (
-            event_row
-        )
+        event_id, anomalous_norad_id, screening_epoch_utc, horizon_s, threshold_km = event_row
 
         # Fetch associated risk rows.
         risk_cursor = db.execute(
@@ -1169,9 +1150,7 @@ async def get_object_track(
 
     # Reference epoch is always now so the track is centered on the current
     # satellite position, matching the SampledPositionProperty animation window.
-    reference_epoch_utc: datetime.datetime = datetime.datetime.now(
-        tz=datetime.UTC
-    )
+    reference_epoch_utc: datetime.datetime = datetime.datetime.now(tz=datetime.UTC)
 
     # --- Backward track ---
     # Range: from -seconds_back up to (not including) 0, step step_s, then t=0.
@@ -1190,7 +1169,9 @@ async def get_object_track(
         except ValueError as exc:
             logger.warning(
                 "Track back-propagation failed for NORAD %d at t=%+d s: %s",
-                norad_id, t_s, exc,
+                norad_id,
+                t_s,
+                exc,
             )
             continue
 
@@ -1221,7 +1202,9 @@ async def get_object_track(
             except ValueError as exc:
                 logger.warning(
                     "Track forward-propagation failed for NORAD %d at t=+%d s: %s",
-                    norad_id, t_s, exc,
+                    norad_id,
+                    t_s,
+                    exc,
                 )
                 continue
 
@@ -1230,10 +1213,7 @@ async def get_object_track(
                 # Covariance growth: P_ii + Q_ii * (t / dt_nominal).
                 # Linear approximation of unmodeled acceleration variance accumulation.
                 # See plan docs/plans/2026-03-29-history-tracks-cones.md step 3.1.
-                sigma2_grown = [
-                    float(cov_km2[i, i]) + float(q_matrix[i, i]) * (t_s / dt_nominal_s)
-                    for i in range(3)
-                ]
+                sigma2_grown = [float(cov_km2[i, i]) + float(q_matrix[i, i]) * (t_s / dt_nominal_s) for i in range(3)]
                 # 3-sigma radius from maximum position axis variance.
                 # Clamped: minimum 1 km (visibility), maximum 500 km (prevent artifacts).
                 radius_km: float = float(3.0 * np.sqrt(max(sigma2_grown)))
@@ -1312,9 +1292,7 @@ async def admin_trigger_process() -> dict:
     for entry, tle_record in all_tle_records:
         norad_id = int(entry["norad_id"])
         try:
-            is_last = (
-                tle_record["epoch_utc"] == latest_tle_epoch_per_norad.get(norad_id)
-            )
+            is_last = tle_record["epoch_utc"] == latest_tle_epoch_per_norad.get(norad_id)
             messages: list[dict] = processing.process_single_object(
                 db=db,
                 entry=entry,
@@ -1337,9 +1315,7 @@ async def admin_trigger_process() -> dict:
             # was detected. Only trigger on the last TLE for each object to avoid
             # redundant screenings from intermediate replay TLEs.
             if is_last:
-                admin_anomaly_msg: dict | None = next(
-                    (m for m in messages if m.get("type") == WS_TYPE_ANOMALY), None
-                )
+                admin_anomaly_msg: dict | None = next((m for m in messages if m.get("type") == WS_TYPE_ANOMALY), None)
                 if admin_anomaly_msg is not None:
                     admin_screening_inputs: dict = {
                         "anomalous_norad_id": norad_id,
@@ -1347,14 +1323,15 @@ async def admin_trigger_process() -> dict:
                         "tle_line1": tle_record["tle_line1"],
                         "tle_line2": tle_record["tle_line2"],
                     }
-                    asyncio.get_event_loop().create_task(
-                        _run_conjunction_screening(app, admin_screening_inputs)
-                    )
+                    asyncio.get_event_loop().create_task(_run_conjunction_screening(app, admin_screening_inputs))
 
         except Exception as exc:  # noqa: BLE001
             logger.error(
                 "admin_trigger_process: error for NORAD %d @ %s: %s",
-                norad_id, tle_record.get("epoch_utc"), exc, exc_info=True,
+                norad_id,
+                tle_record.get("epoch_utc"),
+                exc,
+                exc_info=True,
             )
             continue
 

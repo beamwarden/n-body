@@ -2,6 +2,7 @@
 
 Covers F-040, F-041, F-042, F-043, F-044, NF-012.
 """
+
 import datetime
 import json
 import sqlite3
@@ -39,9 +40,7 @@ def _make_synthetic_filter_state(
     if epoch_utc is None:
         epoch_utc = datetime.datetime(2026, 3, 28, 19, 0, 0, tzinfo=datetime.UTC)
     # ISS-like ECI position (km) and velocity (km/s), approximate.
-    state_eci_km = np.array(
-        [6378.0 + 400.0, 0.0, 0.0, 0.0, 7.67, 0.0], dtype=np.float64
-    )
+    state_eci_km = np.array([6378.0 + 400.0, 0.0, 0.0, 0.0, 7.67, 0.0], dtype=np.float64)
     fs = kalman.init_filter(
         state_eci_km=state_eci_km,
         epoch_utc=epoch_utc,
@@ -164,9 +163,16 @@ def test_get_catalog_returns_list() -> None:
     assert len(data) == 2
 
     required_keys = {
-        "norad_id", "name", "last_update_epoch_utc", "confidence",
-        "eci_km", "eci_km_s", "covariance_diagonal_km2", "nis",
-        "anomaly_flag", "innovation_eci_km",
+        "norad_id",
+        "name",
+        "last_update_epoch_utc",
+        "confidence",
+        "eci_km",
+        "eci_km_s",
+        "covariance_diagonal_km2",
+        "nis",
+        "anomaly_flag",
+        "innovation_eci_km",
     }
     for item in data:
         assert required_keys <= set(item.keys()), f"Missing keys in: {item}"
@@ -457,9 +463,7 @@ def test_ensure_state_history_table_creates_table() -> None:
     db = sqlite3.connect(":memory:")
     _ensure_state_history_table(db)
 
-    cursor = db.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='state_history'"
-    )
+    cursor = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='state_history'")
     row = cursor.fetchone()
     assert row is not None, "state_history table was not created"
 
@@ -467,11 +471,22 @@ def test_ensure_state_history_table_creates_table() -> None:
     cursor = db.execute("PRAGMA table_info(state_history)")
     columns = {row[1] for row in cursor.fetchall()}
     expected_columns = {
-        "id", "norad_id", "epoch_utc",
-        "x_km", "y_km", "z_km",
-        "vx_km_s", "vy_km_s", "vz_km_s",
-        "cov_x_km2", "cov_y_km2", "cov_z_km2",
-        "nis", "confidence", "anomaly_type", "message_type",
+        "id",
+        "norad_id",
+        "epoch_utc",
+        "x_km",
+        "y_km",
+        "z_km",
+        "vx_km_s",
+        "vy_km_s",
+        "vz_km_s",
+        "cov_x_km2",
+        "cov_y_km2",
+        "cov_z_km2",
+        "nis",
+        "confidence",
+        "anomaly_type",
+        "message_type",
     }
     assert expected_columns <= columns
 

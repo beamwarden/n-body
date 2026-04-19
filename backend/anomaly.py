@@ -14,6 +14,7 @@ in ECI J2000, as produced by kalman.py.
 Units: km for position residuals, km/s for velocity residuals, seconds for
 duration values.
 """
+
 import datetime
 import sqlite3
 
@@ -203,9 +204,7 @@ def classify_anomaly(
     # TECH DEBT (post-POC): replace with proper RSW frame decomposition using
     # the object's actual velocity vector (not the velocity residual) to define
     # the along-track unit vector.
-    innovation_arr: NDArray[np.float64] = np.asarray(
-        innovation_eci_km, dtype=np.float64
-    )
+    innovation_arr: NDArray[np.float64] = np.asarray(innovation_eci_km, dtype=np.float64)
     pos_residual_km: NDArray[np.float64] = innovation_arr[0:3]
     vel_direction: NDArray[np.float64] = innovation_arr[3:6]
     vel_norm: float = float(np.linalg.norm(vel_direction))
@@ -213,9 +212,7 @@ def classify_anomaly(
     if vel_norm >= 1e-10:
         vel_unit: NDArray[np.float64] = vel_direction / vel_norm
         along_track_km: float = abs(float(np.dot(pos_residual_km, vel_unit)))
-        cross_track_km: float = float(
-            np.linalg.norm(pos_residual_km - np.dot(pos_residual_km, vel_unit) * vel_unit)
-        )
+        cross_track_km: float = float(np.linalg.norm(pos_residual_km - np.dot(pos_residual_km, vel_unit) * vel_unit))
         if along_track_km > 3.0 * cross_track_km and cross_track_km < 1.0:
             return ANOMALY_DRAG
 
@@ -257,9 +254,7 @@ def trigger_recalibration(
 
     valid_types = {ANOMALY_MANEUVER, ANOMALY_DRAG, ANOMALY_DIVERGENCE}
     if anomaly_type not in valid_types:
-        raise ValueError(
-            f"anomaly_type must be one of {valid_types}, got {anomaly_type!r}"
-        )
+        raise ValueError(f"anomaly_type must be one of {valid_types}, got {anomaly_type!r}")
 
     if anomaly_type == ANOMALY_MANEUVER:
         inflation_factor: float = 20.0
@@ -370,9 +365,7 @@ def record_recalibration_complete(
     # datetime.fromisoformat() in Python 3.11+ handles the '+00:00' suffix.
     detection_epoch_utc: datetime.datetime = datetime.datetime.fromisoformat(row[0])
 
-    recalibration_duration_s: float = (
-        resolution_epoch_utc - detection_epoch_utc
-    ).total_seconds()
+    recalibration_duration_s: float = (resolution_epoch_utc - detection_epoch_utc).total_seconds()
 
     cursor.execute(
         """
@@ -414,9 +407,7 @@ def update_anomaly_type(
     """
     valid_types = {ANOMALY_MANEUVER, ANOMALY_DRAG, ANOMALY_DIVERGENCE}
     if new_anomaly_type not in valid_types:
-        raise ValueError(
-            f"new_anomaly_type must be one of {valid_types}, got {new_anomaly_type!r}"
-        )
+        raise ValueError(f"new_anomaly_type must be one of {valid_types}, got {new_anomaly_type!r}")
 
     cursor = db.cursor()
     cursor.execute(

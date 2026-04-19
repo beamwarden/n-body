@@ -3,6 +3,7 @@
 Covers the replay_tles() function: state_history writes, empty cache handling,
 and progress output.
 """
+
 import datetime
 import json
 import os
@@ -77,7 +78,6 @@ def _make_test_db_with_catalog_json(
 
 
 class TestReplayTles:
-
     def test_three_tles_produce_state_history_rows(self) -> None:
         """3 TLEs for 1 object should produce at least 1 state_history row.
 
@@ -111,6 +111,7 @@ class TestReplayTles:
         import json
         import os
         import tempfile
+
         tmpdir = tempfile.mkdtemp()
         db_path = os.path.join(tmpdir, "empty.db")
         catalog_path = os.path.join(tmpdir, "catalog.json")
@@ -152,9 +153,7 @@ class TestReplayTles:
 
         db = sqlite3.connect(db_path)
         for nid in norad_ids:
-            cursor = db.execute(
-                "SELECT COUNT(*) FROM state_history WHERE norad_id=?", (nid,)
-            )
+            cursor = db.execute("SELECT COUNT(*) FROM state_history WHERE norad_id=?", (nid,))
             count = cursor.fetchone()[0]
             assert count >= 1, f"Expected state_history rows for NORAD {nid}, got {count}"
         db.close()
@@ -181,6 +180,7 @@ class TestReplayTles:
     def test_invalid_catalog_exits_with_1(self) -> None:
         """Non-existent catalog path should exit with code 1."""
         import tempfile
+
         tmpdir = tempfile.mkdtemp()
         db_path = os.path.join(tmpdir, "test.db")
 

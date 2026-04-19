@@ -6,6 +6,7 @@ Covers:
 - Returns persisted results correctly
 - Limits to 5 most recent events
 """
+
 import datetime
 import sqlite3
 
@@ -20,6 +21,7 @@ from backend.main import (
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_catalog_entries(norad_ids: list[int]) -> list[dict]:
     """Build minimal catalog entry dicts."""

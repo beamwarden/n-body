@@ -1,4 +1,5 @@
 """Tests for backend/anomaly.py."""
+
 import datetime
 import sqlite3
 
@@ -312,9 +313,7 @@ def test_trigger_recalibration_rejects_unknown_type(
 # ---------------------------------------------------------------------------
 
 
-def test_record_anomaly_writes_to_db(
-    db: sqlite3.Connection, utc_epoch: datetime.datetime
-) -> None:
+def test_record_anomaly_writes_to_db(db: sqlite3.Connection, utc_epoch: datetime.datetime) -> None:
     """record_anomaly inserts a row into the alerts table and returns its id."""
     row_id = record_anomaly(
         db=db,
@@ -349,9 +348,7 @@ def test_record_anomaly_rejects_naive_datetime(db: sqlite3.Connection) -> None:
         )
 
 
-def test_record_recalibration_complete_updates_duration(
-    db: sqlite3.Connection, utc_epoch: datetime.datetime
-) -> None:
+def test_record_recalibration_complete_updates_duration(db: sqlite3.Connection, utc_epoch: datetime.datetime) -> None:
     """record_recalibration_complete stores duration and sets status to resolved."""
     row_id = record_anomaly(
         db=db,
@@ -369,9 +366,7 @@ def test_record_recalibration_complete_updates_duration(
     )
 
     cursor = db.cursor()
-    cursor.execute(
-        "SELECT recalibration_duration_s, status FROM alerts WHERE id = ?", (row_id,)
-    )
+    cursor.execute("SELECT recalibration_duration_s, status FROM alerts WHERE id = ?", (row_id,))
     row = cursor.fetchone()
     assert row is not None
     assert row[0] == pytest.approx(120.0)
@@ -398,9 +393,7 @@ def test_record_recalibration_complete_rejects_naive_datetime(
         )
 
 
-def test_record_recalibration_complete_missing_id(
-    db: sqlite3.Connection, utc_epoch: datetime.datetime
-) -> None:
+def test_record_recalibration_complete_missing_id(db: sqlite3.Connection, utc_epoch: datetime.datetime) -> None:
     """record_recalibration_complete raises ValueError for nonexistent row id."""
     with pytest.raises(ValueError, match="No anomaly record with id 9999"):
         record_recalibration_complete(
@@ -410,9 +403,7 @@ def test_record_recalibration_complete_missing_id(
         )
 
 
-def test_get_active_anomalies_excludes_resolved(
-    db: sqlite3.Connection, utc_epoch: datetime.datetime
-) -> None:
+def test_get_active_anomalies_excludes_resolved(db: sqlite3.Connection, utc_epoch: datetime.datetime) -> None:
     """get_active_anomalies returns only unresolved anomalies."""
     # Insert two anomalies
     row_id_1 = record_anomaly(
@@ -444,9 +435,7 @@ def test_get_active_anomalies_excludes_resolved(
     assert active[0]["status"] == "active"
 
 
-def test_get_active_anomalies_parses_datetime(
-    db: sqlite3.Connection, utc_epoch: datetime.datetime
-) -> None:
+def test_get_active_anomalies_parses_datetime(db: sqlite3.Connection, utc_epoch: datetime.datetime) -> None:
     """get_active_anomalies returns detection_epoch_utc as a datetime object."""
     record_anomaly(
         db=db,
@@ -493,9 +482,7 @@ def test_datetime_round_trip_preserves_timezone(
 # ---------------------------------------------------------------------------
 
 
-def test_record_anomaly_idempotent_on_duplicate_epoch(
-    db: sqlite3.Connection, utc_epoch: datetime.datetime
-) -> None:
+def test_record_anomaly_idempotent_on_duplicate_epoch(db: sqlite3.Connection, utc_epoch: datetime.datetime) -> None:
     """Calling record_anomaly twice with the same (norad_id, detection_epoch_utc)
     must produce exactly 1 DB row and must return the same row id both times.
     """
@@ -521,14 +508,10 @@ def test_record_anomaly_idempotent_on_duplicate_epoch(
     )
     count = cursor.fetchone()[0]
     assert count == 1, f"Expected 1 row, got {count}"
-    assert row_id_first == row_id_second, (
-        f"Expected same row id both calls, got {row_id_first} then {row_id_second}"
-    )
+    assert row_id_first == row_id_second, f"Expected same row id both calls, got {row_id_first} then {row_id_second}"
 
 
-def test_record_anomaly_different_epochs_both_inserted(
-    db: sqlite3.Connection, utc_epoch: datetime.datetime
-) -> None:
+def test_record_anomaly_different_epochs_both_inserted(db: sqlite3.Connection, utc_epoch: datetime.datetime) -> None:
     """Two calls with different detection_epoch_utc values must each insert a
     separate row (regression guard — uniqueness is per epoch, not per norad_id).
     """

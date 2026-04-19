@@ -7,6 +7,7 @@ Covers:
   - init_catalog_db: migration of pre-migration schema
   - poll_once: N2YO fallback integration, key-not-set skip, N2YO total failure
 """
+
 import asyncio
 import datetime
 import logging
@@ -47,6 +48,7 @@ _FAKE_API_KEY = "s3cr3t-n2yo-key"
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _utc(year: int, month: int, day: int, hour: int = 0) -> datetime.datetime:
     return datetime.datetime(year, month, day, hour, tzinfo=datetime.UTC)
 
@@ -76,6 +78,7 @@ def _n2yo_response_json(
 def _mock_httpx_response(status_code: int, json_body: dict | None = None) -> httpx.Response:
     """Build a minimal httpx.Response for mocking."""
     import json as _json
+
     content = _json.dumps(json_body).encode() if json_body is not None else b""
     return httpx.Response(status_code, content=content)
 
@@ -83,6 +86,7 @@ def _mock_httpx_response(status_code: int, json_body: dict | None = None) -> htt
 # ---------------------------------------------------------------------------
 # fetch_tle_n2yo — happy paths
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_fetch_tle_n2yo_success() -> None:
@@ -103,9 +107,7 @@ async def test_fetch_tle_n2yo_success() -> None:
 @pytest.mark.asyncio
 async def test_fetch_tle_n2yo_accepts_unix_newlines() -> None:
     """fetch_tle_n2yo succeeds when the tle field uses \\n instead of \\r\\n."""
-    mock_resp = _mock_httpx_response(
-        200, _n2yo_response_json(tle_separator="\n")
-    )
+    mock_resp = _mock_httpx_response(200, _n2yo_response_json(tle_separator="\n"))
 
     with unittest.mock.patch.object(httpx.AsyncClient, "get", return_value=mock_resp):
         async with httpx.AsyncClient() as client:
@@ -119,6 +121,7 @@ async def test_fetch_tle_n2yo_accepts_unix_newlines() -> None:
 # ---------------------------------------------------------------------------
 # fetch_tle_n2yo — error / None paths
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_fetch_tle_n2yo_returns_none_on_http_error() -> None:
@@ -135,9 +138,7 @@ async def test_fetch_tle_n2yo_returns_none_on_http_error() -> None:
 @pytest.mark.asyncio
 async def test_fetch_tle_n2yo_returns_none_on_network_exception() -> None:
     """fetch_tle_n2yo returns None when an httpx exception is raised."""
-    with unittest.mock.patch.object(
-        httpx.AsyncClient, "get", side_effect=httpx.ConnectError("connection refused")
-    ):
+    with unittest.mock.patch.object(httpx.AsyncClient, "get", side_effect=httpx.ConnectError("connection refused")):
         async with httpx.AsyncClient() as client:
             result = await fetch_tle_n2yo(25544, _FAKE_API_KEY, client)
 
@@ -195,14 +196,13 @@ async def test_fetch_tle_n2yo_redacts_api_key_in_logs(caplog: pytest.LogCaptureF
                 await fetch_tle_n2yo(25544, _FAKE_API_KEY, client)
 
     for record in caplog.records:
-        assert _FAKE_API_KEY not in record.getMessage(), (
-            f"API key found in log record: {record.getMessage()!r}"
-        )
+        assert _FAKE_API_KEY not in record.getMessage(), f"API key found in log record: {record.getMessage()!r}"
 
 
 # ---------------------------------------------------------------------------
 # _select_n2yo_fallback_ids
 # ---------------------------------------------------------------------------
+
 
 def test_select_fallback_ids_includes_missing() -> None:
     """IDs with no TLE in the cache are included in fallback selection."""
@@ -284,6 +284,7 @@ def test_select_fallback_ids_oldest_first_ordering() -> None:
 # cache_tles — source column
 # ---------------------------------------------------------------------------
 
+
 def test_cache_tles_records_source_tag() -> None:
     """cache_tles stores the supplied source tag in the source column."""
     db = _make_db()
@@ -328,6 +329,7 @@ def test_cache_tles_default_source_is_space_track() -> None:
 # init_catalog_db — migration test
 # ---------------------------------------------------------------------------
 
+
 def test_init_catalog_db_migrates_missing_source_column() -> None:
     """init_catalog_db adds the source column to a pre-migration database."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -352,8 +354,7 @@ def test_init_catalog_db_migrates_missing_source_column() -> None:
         )
         # Insert a row using the old schema
         conn.execute(
-            "INSERT INTO tle_catalog (norad_id, epoch_utc, tle_line1, tle_line2, fetched_at) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO tle_catalog (norad_id, epoch_utc, tle_line1, tle_line2, fetched_at) VALUES (?, ?, ?, ?, ?)",
             (25544, "2024-03-27T12:58:17Z", _VALID_TLE_LINE1, _VALID_TLE_LINE2, "2024-03-28T10:00:00Z"),
         )
         conn.commit()
@@ -441,6 +442,7 @@ async def test_poll_once_falls_back_to_n2yo_for_gap_only(monkeypatch: pytest.Mon
     ):
         # Reset module-level flag to ensure the log-once logic doesn't interfere
         import backend.ingest as ingest_mod
+
         ingest_mod._n2yo_key_missing_logged = False
 
         total = await poll_once(db, _CATALOG_ENTRIES, event_bus=event_bus)
@@ -472,6 +474,7 @@ async def test_poll_once_skips_n2yo_when_api_key_unset(
     monkeypatch.delenv("N2YO_API_KEY", raising=False)
 
     import backend.ingest as ingest_mod
+
     ingest_mod._n2yo_key_missing_logged = False  # ensure fresh state
 
     n2yo_call_count = {"count": 0}
@@ -509,6 +512,7 @@ async def test_poll_once_survives_n2yo_total_failure(monkeypatch: pytest.MonkeyP
     monkeypatch.setenv("N2YO_API_KEY", _FAKE_API_KEY)
 
     import backend.ingest as ingest_mod
+
     ingest_mod._n2yo_key_missing_logged = False
 
     def _boom(*args, **kwargs):  # type: ignore[no-untyped-def]
@@ -540,6 +544,7 @@ async def test_poll_once_skips_n2yo_when_gap_list_empty(monkeypatch: pytest.Monk
     monkeypatch.setenv("N2YO_API_KEY", _FAKE_API_KEY)
 
     import backend.ingest as ingest_mod
+
     ingest_mod._n2yo_key_missing_logged = False
 
     n2yo_call_count = {"count": 0}

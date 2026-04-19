@@ -1,4 +1,5 @@
 """Tests for backend/kalman.py."""
+
 import datetime
 from unittest.mock import patch
 
@@ -25,8 +26,7 @@ ISS_TLE_LINE1 = "1 25544U 98067A   24045.51773148  .00015204  00000+0  27364-3 0
 ISS_TLE_LINE2 = "2 25544  51.6412 225.3758 0004694 126.4788 345.7603 15.49563589442437"
 
 # Mock propagated state used across predict/update tests
-MOCK_PROPAGATED_STATE = np.array([6500.0, 500.0, 100.0, -0.5, 7.5, 0.2],
-                                  dtype=np.float64)
+MOCK_PROPAGATED_STATE = np.array([6500.0, 500.0, 100.0, -0.5, 7.5, 0.2], dtype=np.float64)
 
 
 def test_init_filter_returns_valid_state() -> None:
@@ -35,9 +35,17 @@ def test_init_filter_returns_valid_state() -> None:
 
     assert isinstance(fs, dict)
     required_keys = [
-        "filter", "last_epoch_utc", "q_matrix", "r_matrix",
-        "nis", "nis_history", "innovation_eci_km", "anomaly_flag",
-        "confidence", "state_eci_km", "covariance_km2",
+        "filter",
+        "last_epoch_utc",
+        "q_matrix",
+        "r_matrix",
+        "nis",
+        "nis_history",
+        "innovation_eci_km",
+        "anomaly_flag",
+        "confidence",
+        "state_eci_km",
+        "covariance_km2",
     ]
     for key in required_keys:
         assert key in fs, f"Missing key: {key}"
@@ -52,8 +60,7 @@ def test_predict_advances_epoch() -> None:
     """predict step moves the filter epoch forward."""
     fs = kalman.init_filter(ISS_STATE, T0)
 
-    with patch("backend.propagator.tle_to_state_vector_eci_km",
-               return_value=MOCK_PROPAGATED_STATE):
+    with patch("backend.propagator.tle_to_state_vector_eci_km", return_value=MOCK_PROPAGATED_STATE):
         predicted = kalman.predict(fs, T1, ISS_TLE_LINE1, ISS_TLE_LINE2)
 
     assert predicted.shape == (6,)
@@ -65,8 +72,7 @@ def test_update_incorporates_observation() -> None:
     """update step modifies state based on observation."""
     fs = kalman.init_filter(ISS_STATE, T0)
 
-    with patch("backend.propagator.tle_to_state_vector_eci_km",
-               return_value=MOCK_PROPAGATED_STATE):
+    with patch("backend.propagator.tle_to_state_vector_eci_km", return_value=MOCK_PROPAGATED_STATE):
         kalman.predict(fs, T1, ISS_TLE_LINE1, ISS_TLE_LINE2)
 
     obs = np.array([6510.0, 490.0, 95.0, -0.48, 7.52, 0.21], dtype=np.float64)
@@ -106,13 +112,10 @@ def test_nis_within_threshold_for_consistent_filter() -> None:
     fs = kalman.init_filter(ISS_STATE, T0)
 
     for i in range(3):
-        _t_obs = datetime.datetime(2026, 1, 1, i, 30, 0,
-                                   tzinfo=datetime.UTC)
-        t_pred = datetime.datetime(2026, 1, 1, i + 1, 0, 0,
-                                   tzinfo=datetime.UTC)
+        _t_obs = datetime.datetime(2026, 1, 1, i, 30, 0, tzinfo=datetime.UTC)
+        t_pred = datetime.datetime(2026, 1, 1, i + 1, 0, 0, tzinfo=datetime.UTC)
         # Propagated state and observation are identical (zero innovation)
-        with patch("backend.propagator.tle_to_state_vector_eci_km",
-                   return_value=ISS_STATE.copy()):
+        with patch("backend.propagator.tle_to_state_vector_eci_km", return_value=ISS_STATE.copy()):
             kalman.predict(fs, t_pred, ISS_TLE_LINE1, ISS_TLE_LINE2)
         kalman.update(fs, ISS_STATE.copy(), t_pred)
         assert fs["nis"] < CHI2_THRESHOLD_6DOF, (
@@ -133,8 +136,7 @@ def test_recalibrate_inflates_covariance() -> None:
     # Post-recalibration covariance diagonal must all be larger than pre (0.01)
     for i in range(6):
         assert new_fs["covariance_km2"][i, i] > 0.01, (
-            f"covariance[{i},{i}] = {new_fs['covariance_km2'][i,i]:.6f} "
-            "not inflated above 0.01"
+            f"covariance[{i},{i}] = {new_fs['covariance_km2'][i, i]:.6f} not inflated above 0.01"
         )
     np.testing.assert_array_almost_equal(new_fs["state_eci_km"], new_obs)
 
@@ -174,20 +176,14 @@ def test_confidence_decreases_with_high_nis() -> None:
     assert conf_high_nis < 0.40, f"Expected < 0.40, got {conf_high_nis:.4f}"
 
     # Core property: monotone decrease as NIS increases
-    assert conf_low_nis > conf_at_threshold, (
-        "Confidence should decrease as NIS increases from 1.0 to threshold"
-    )
-    assert conf_at_threshold > conf_high_nis, (
-        "Confidence should decrease as NIS increases from threshold to 50.0"
-    )
+    assert conf_low_nis > conf_at_threshold, "Confidence should decrease as NIS increases from 1.0 to threshold"
+    assert conf_at_threshold > conf_high_nis, "Confidence should decrease as NIS increases from threshold to 50.0"
 
     # With populated history matching the NIS level, the bounds tighten:
     # history=[threshold]: below=1, score=1.0 → same as empty (threshold counts as ≤)
     # history=[50.0]: below=0, score=0.0 → NIS=50.0 gives (2*0+0)/3=0.0 < 0.20
     conf_high_with_history = kalman.compute_confidence(50.0, [50.0])
-    assert conf_high_with_history < 0.20, (
-        f"NIS=50 with history=[50]: expected < 0.20, got {conf_high_with_history:.4f}"
-    )
+    assert conf_high_with_history < 0.20, f"NIS=50 with history=[50]: expected < 0.20, got {conf_high_with_history:.4f}"
 
 
 def test_state_vector_units_km() -> None:
@@ -200,13 +196,9 @@ def test_state_vector_units_km() -> None:
     vel_mag = float(np.linalg.norm(state[3:]))
 
     # Position magnitude in LEO-to-GEO range (km)
-    assert 6000.0 <= pos_mag <= 45000.0, (
-        f"Position magnitude {pos_mag:.1f} not in expected km range 6000–45000"
-    )
+    assert 6000.0 <= pos_mag <= 45000.0, f"Position magnitude {pos_mag:.1f} not in expected km range 6000–45000"
     # Velocity magnitude in orbital range (km/s)
-    assert 1.0 <= vel_mag <= 12.0, (
-        f"Velocity magnitude {vel_mag:.4f} not in expected km/s range 1–12"
-    )
+    assert 1.0 <= vel_mag <= 12.0, f"Velocity magnitude {vel_mag:.4f} not in expected km/s range 1–12"
     # Guard against accidental meter-scale values
     assert pos_mag < 1e6, "Position appears to be in meters, not km"
     assert vel_mag < 100.0, "Velocity appears to be in m/s, not km/s"
@@ -239,8 +231,7 @@ def test_anomaly_flag_set_on_high_nis() -> None:
     """anomaly_flag is True when observation is far from predicted state."""
     fs = kalman.init_filter(ISS_STATE, T0)
 
-    with patch("backend.propagator.tle_to_state_vector_eci_km",
-               return_value=ISS_STATE.copy()):
+    with patch("backend.propagator.tle_to_state_vector_eci_km", return_value=ISS_STATE.copy()):
         kalman.predict(fs, T1, ISS_TLE_LINE1, ISS_TLE_LINE2)
 
     # Inject a ~100 km position discrepancy in each axis
@@ -250,9 +241,7 @@ def test_anomaly_flag_set_on_high_nis() -> None:
     kalman.update(fs, far_obs, T1)
 
     assert fs["anomaly_flag"] is True, "anomaly_flag should be True for large residual"
-    assert fs["nis"] > CHI2_THRESHOLD_6DOF, (
-        f"NIS {fs['nis']:.3f} should exceed threshold {CHI2_THRESHOLD_6DOF}"
-    )
+    assert fs["nis"] > CHI2_THRESHOLD_6DOF, f"NIS {fs['nis']:.3f} should exceed threshold {CHI2_THRESHOLD_6DOF}"
 
 
 def test_init_filter_uses_object_class_q() -> None:
@@ -275,14 +264,11 @@ def test_nis_history_capped_at_20() -> None:
 
     for i in range(25):
         t_pred = T0 + datetime.timedelta(minutes=30 * (i + 1))
-        with patch("backend.propagator.tle_to_state_vector_eci_km",
-                   return_value=ISS_STATE.copy()):
+        with patch("backend.propagator.tle_to_state_vector_eci_km", return_value=ISS_STATE.copy()):
             kalman.predict(fs, t_pred, ISS_TLE_LINE1, ISS_TLE_LINE2)
         kalman.update(fs, ISS_STATE.copy(), t_pred)
 
-    assert len(fs["nis_history"]) == 20, (
-        f"Expected 20 history entries, got {len(fs['nis_history'])}"
-    )
+    assert len(fs["nis_history"]) == 20, f"Expected 20 history entries, got {len(fs['nis_history'])}"
 
 
 def test_get_state_returns_copies() -> None:
@@ -307,22 +293,20 @@ def test_get_state_returns_copies() -> None:
 def test_update_cycle_under_100ms() -> None:
     """Single predict+update cycle completes in under 100ms (NF-001)."""
     import time
+
     times = []
 
     for _ in range(100):
         # Re-init each iteration to avoid compounding epoch drift
         fs_i = kalman.init_filter(ISS_STATE, T0)
         t_start = time.perf_counter()
-        with patch("backend.propagator.tle_to_state_vector_eci_km",
-                   return_value=ISS_STATE.copy()):
+        with patch("backend.propagator.tle_to_state_vector_eci_km", return_value=ISS_STATE.copy()):
             kalman.predict(fs_i, T1, ISS_TLE_LINE1, ISS_TLE_LINE2)
         kalman.update(fs_i, ISS_STATE.copy(), T1)
         times.append(time.perf_counter() - t_start)
 
     median_ms = float(np.median(times)) * 1000
-    assert float(np.median(times)) < 0.1, (
-        f"Median update cycle {median_ms:.1f}ms exceeds 100ms NF-001 target"
-    )
+    assert float(np.median(times)) < 0.1, f"Median update cycle {median_ms:.1f}ms exceeds 100ms NF-001 target"
 
 
 def test_full_update_cycle_with_real_propagator() -> None:
@@ -338,9 +322,7 @@ def test_full_update_cycle_with_real_propagator() -> None:
     tle_line2 = ISS_TLE_LINE2
 
     tle_epoch = propagator.tle_epoch_utc(tle_line1)
-    initial_state = propagator.tle_to_state_vector_eci_km(
-        tle_line1, tle_line2, tle_epoch
-    )
+    initial_state = propagator.tle_to_state_vector_eci_km(tle_line1, tle_line2, tle_epoch)
 
     fs = kalman.init_filter(initial_state, tle_epoch)
 
@@ -351,6 +333,5 @@ def test_full_update_cycle_with_real_propagator() -> None:
     kalman.update(fs, obs_state, t_obs)
 
     assert fs["nis"] < CHI2_THRESHOLD_6DOF, (
-        f"Integration test: NIS {fs['nis']:.3f} exceeded threshold "
-        f"{CHI2_THRESHOLD_6DOF} for consistent filter"
+        f"Integration test: NIS {fs['nis']:.3f} exceeded threshold {CHI2_THRESHOLD_6DOF} for consistent filter"
     )

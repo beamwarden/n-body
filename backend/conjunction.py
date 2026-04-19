@@ -10,6 +10,7 @@ the event loop. It is also directly importable in synchronous test contexts.
 Coordinate frame: all positions are ECI J2000 km as produced by propagator.propagate_tle.
 Units: km for distances, seconds for time intervals, UTC-aware datetimes for all epochs.
 """
+
 import datetime
 import logging
 
@@ -76,26 +77,19 @@ def generate_trajectory_eci_km(
         ValueError: If start_epoch_utc is not UTC-aware.
     """
     if start_epoch_utc.tzinfo is None or start_epoch_utc.utcoffset() is None:
-        raise ValueError(
-            "start_epoch_utc must be UTC-aware (tzinfo set to datetime.timezone.utc)."
-        )
+        raise ValueError("start_epoch_utc must be UTC-aware (tzinfo set to datetime.timezone.utc).")
 
     trajectory: list[tuple[datetime.datetime, NDArray[np.float64]]] = []
     num_steps = horizon_s // step_s
 
     for i in range(1, num_steps + 1):
-        point_epoch_utc: datetime.datetime = start_epoch_utc + datetime.timedelta(
-            seconds=i * step_s
-        )
+        point_epoch_utc: datetime.datetime = start_epoch_utc + datetime.timedelta(seconds=i * step_s)
         try:
-            position_eci_km, _ = propagator.propagate_tle(
-                tle_line1, tle_line2, point_epoch_utc
-            )
+            position_eci_km, _ = propagator.propagate_tle(tle_line1, tle_line2, point_epoch_utc)
             trajectory.append((point_epoch_utc, position_eci_km))
         except ValueError as exc:
             logger.warning(
-                "generate_trajectory_eci_km: propagation failed at step %d "
-                "(t=+%d s): %s — skipping point",
+                "generate_trajectory_eci_km: propagation failed at step %d (t=+%d s): %s — skipping point",
                 i,
                 i * step_s,
                 exc,
@@ -125,14 +119,11 @@ def compute_min_distance_km(
         datetime.min UTC-aware).
     """
     # Sentinel: return very large distance if no comparison can be made.
-    _sentinel_epoch = datetime.datetime(
-        2000, 1, 1, tzinfo=datetime.UTC
-    )
+    _sentinel_epoch = datetime.datetime(2000, 1, 1, tzinfo=datetime.UTC)
 
     if not traj_a or not traj_b:
         logger.warning(
-            "compute_min_distance_km: one or both trajectories are empty — "
-            "returning sentinel distance 1e9 km"
+            "compute_min_distance_km: one or both trajectories are empty — returning sentinel distance 1e9 km"
         )
         return 1e9, _sentinel_epoch
 
@@ -209,8 +200,7 @@ def screen_conjunctions(
         }
     """
     logger.info(
-        "screen_conjunctions: starting for anomalous NORAD %d at epoch %s, "
-        "%d other objects",
+        "screen_conjunctions: starting for anomalous NORAD %d at epoch %s, %d other objects",
         anomalous_norad_id,
         screening_epoch_utc.isoformat(),
         len(other_objects),
@@ -224,9 +214,7 @@ def screen_conjunctions(
         SCREENING_HORIZON_S,
         SCREENING_STEP_S,
     )
-    logger.debug(
-        "screen_conjunctions: anomalous trajectory has %d points", len(anomalous_traj)
-    )
+    logger.debug("screen_conjunctions: anomalous trajectory has %d points", len(anomalous_traj))
 
     first_order: list[dict] = []
     # Cache trajectories for first-order objects so second-order screening can reuse them.
@@ -264,8 +252,7 @@ def screen_conjunctions(
             )
             first_order_trajs[other_norad_id] = traj
             logger.info(
-                "screen_conjunctions: first-order risk NORAD %d vs %d, "
-                "min dist=%.3f km, TCA=%s",
+                "screen_conjunctions: first-order risk NORAD %d vs %d, min dist=%.3f km, TCA=%s",
                 anomalous_norad_id,
                 other_norad_id,
                 min_dist_km,
@@ -307,8 +294,7 @@ def screen_conjunctions(
                 )
                 second_order_seen.add(pair)
                 logger.info(
-                    "screen_conjunctions: second-order risk NORAD %d via %d, "
-                    "min dist=%.3f km, TCA=%s",
+                    "screen_conjunctions: second-order risk NORAD %d via %d, min dist=%.3f km, TCA=%s",
                     other_norad_id,
                     fo_norad_id,
                     min_dist_km,
@@ -327,8 +313,7 @@ def screen_conjunctions(
     }
 
     logger.info(
-        "screen_conjunctions: complete for NORAD %d — "
-        "%d first-order, %d second-order risks",
+        "screen_conjunctions: complete for NORAD %d — %d first-order, %d second-order risks",
         anomalous_norad_id,
         len(first_order),
         len(second_order),

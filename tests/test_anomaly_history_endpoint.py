@@ -7,6 +7,7 @@ Covers plan docs/plans/2026-03-29-history-tracks-cones.md Step 1.1 test cases:
 - Invalid NORAD ID returns 404.
 - Endpoint performs no writes (read-only).
 """
+
 import datetime
 import sqlite3
 
@@ -62,8 +63,7 @@ def _make_in_memory_db() -> sqlite3.Connection:
 def _setup_app_state(norad_ids: list[int], db: sqlite3.Connection) -> None:
     """Configure app.state with the given catalog and DB for tests."""
     app.state.catalog_entries = [
-        {"norad_id": nid, "name": f"OBJ-{nid}", "object_class": "active_satellite"}
-        for nid in norad_ids
+        {"norad_id": nid, "name": f"OBJ-{nid}", "object_class": "active_satellite"} for nid in norad_ids
     ]
     app.state.filter_states = {}
     app.state.db = db
@@ -136,7 +136,8 @@ def test_limit_of_20_records() -> None:
     base = datetime.datetime(2026, 3, 28, 0, 0, 0, tzinfo=datetime.UTC)
     for i in range(25):
         _insert_alert(
-            db, 25544,
+            db,
+            25544,
             base + datetime.timedelta(minutes=30 * i),
             nis_value=13.0 + i,
         )
@@ -156,7 +157,9 @@ def test_resolved_anomaly_includes_resolution_fields() -> None:
     detection = datetime.datetime(2026, 3, 28, 19, 0, 0, tzinfo=datetime.UTC)
     resolution = detection + datetime.timedelta(minutes=30)
     _insert_alert(
-        db, 25544, detection,
+        db,
+        25544,
+        detection,
         anomaly_type="maneuver",
         nis_value=25.0,
         resolution_epoch_utc=resolution,

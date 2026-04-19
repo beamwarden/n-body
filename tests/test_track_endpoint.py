@@ -9,6 +9,7 @@ Covers plan docs/plans/2026-03-29-history-tracks-cones.md Step 2.1/3.1 test case
 - Invalid NORAD ID returns 404.
 - Returned epoch_utc strings are valid ISO-8601 and span the expected time range.
 """
+
 import datetime
 import math
 import sqlite3
@@ -98,8 +99,7 @@ def _setup_app_state(
 ) -> None:
     """Configure app.state with catalog, DB, and optional filter states."""
     app.state.catalog_entries = [
-        {"norad_id": nid, "name": f"OBJ-{nid}", "object_class": "active_satellite"}
-        for nid in norad_ids
+        {"norad_id": nid, "name": f"OBJ-{nid}", "object_class": "active_satellite"} for nid in norad_ids
     ]
     app.state.filter_states = filter_states or {}
     app.state.db = db
@@ -116,9 +116,7 @@ def test_backward_track_point_count() -> None:
     _insert_tle(db, 25544)
     with TestClient(app) as client:
         _setup_app_state([25544], db)
-        response = client.get(
-            "/object/25544/track?seconds_back=300&seconds_forward=0&step_s=60"
-        )
+        response = client.get("/object/25544/track?seconds_back=300&seconds_forward=0&step_s=60")
     assert response.status_code == 200
     data = response.json()
     assert len(data["backward_track"]) == 6  # t = -300,-240,-180,-120,-60, 0
@@ -130,13 +128,11 @@ def test_backward_track_eci_magnitudes_are_leo_consistent() -> None:
     _insert_tle(db, 25544)
     with TestClient(app) as client:
         _setup_app_state([25544], db)
-        response = client.get(
-            "/object/25544/track?seconds_back=600&seconds_forward=0&step_s=60"
-        )
+        response = client.get("/object/25544/track?seconds_back=600&seconds_forward=0&step_s=60")
     assert response.status_code == 200
     data = response.json()
     for pt in data["backward_track"]:
-        r_km = math.sqrt(sum(c ** 2 for c in pt["eci_km"]))
+        r_km = math.sqrt(sum(c**2 for c in pt["eci_km"]))
         assert _LEO_RADIUS_MIN_KM <= r_km <= _LEO_RADIUS_MAX_KM, (
             f"ECI magnitude {r_km:.1f} km is outside LEO range for point {pt}"
         )
@@ -148,9 +144,7 @@ def test_forward_track_has_uncertainty_radius_km() -> None:
     _insert_tle(db, 25544)
     with TestClient(app) as client:
         _setup_app_state([25544], db)
-        response = client.get(
-            "/object/25544/track?seconds_back=60&seconds_forward=300&step_s=60"
-        )
+        response = client.get("/object/25544/track?seconds_back=60&seconds_forward=300&step_s=60")
     assert response.status_code == 200
     data = response.json()
     assert len(data["forward_track"]) > 0
@@ -166,16 +160,14 @@ def test_forward_track_uncertainty_increases_monotonically() -> None:
     # No filter state → default linear growth model.
     with TestClient(app) as client:
         _setup_app_state([25544], db, filter_states={})
-        response = client.get(
-            "/object/25544/track?seconds_back=60&seconds_forward=600&step_s=60"
-        )
+        response = client.get("/object/25544/track?seconds_back=60&seconds_forward=600&step_s=60")
     assert response.status_code == 200
     data = response.json()
     radii = [pt["uncertainty_radius_km"] for pt in data["forward_track"]]
     assert len(radii) >= 2, "Need at least 2 forward points to check monotonicity"
     for i in range(1, len(radii)):
         assert radii[i] >= radii[i - 1], (
-            f"Uncertainty radius not monotone: radii[{i}]={radii[i]} < radii[{i-1}]={radii[i-1]}"
+            f"Uncertainty radius not monotone: radii[{i}]={radii[i]} < radii[{i - 1}]={radii[i - 1]}"
         )
 
 
@@ -195,9 +187,7 @@ def test_forward_track_uncertainty_with_filter_state_increases() -> None:
 
     with TestClient(app) as client:
         _setup_app_state([25544], db, filter_states={25544: fs})
-        response = client.get(
-            "/object/25544/track?seconds_back=60&seconds_forward=600&step_s=60"
-        )
+        response = client.get("/object/25544/track?seconds_back=60&seconds_forward=600&step_s=60")
 
     assert response.status_code == 200
     data = response.json()
@@ -205,7 +195,7 @@ def test_forward_track_uncertainty_with_filter_state_increases() -> None:
     assert len(radii) >= 2
     for i in range(1, len(radii)):
         assert radii[i] >= radii[i - 1], (
-            f"Covariance-grown radius not monotone: radii[{i}]={radii[i]} < radii[{i-1}]={radii[i-1]}"
+            f"Covariance-grown radius not monotone: radii[{i}]={radii[i]} < radii[{i - 1}]={radii[i - 1]}"
         )
 
 
@@ -234,9 +224,7 @@ def test_epoch_utc_strings_are_valid_iso8601() -> None:
     _insert_tle(db, 25544)
     with TestClient(app) as client:
         _setup_app_state([25544], db)
-        response = client.get(
-            "/object/25544/track?seconds_back=300&seconds_forward=300&step_s=60"
-        )
+        response = client.get("/object/25544/track?seconds_back=300&seconds_forward=300&step_s=60")
     assert response.status_code == 200
     data = response.json()
     all_points = data["backward_track"] + data["forward_track"]
@@ -264,27 +252,19 @@ def test_epoch_utc_strings_span_expected_time_range() -> None:
     ref_epoch = datetime.datetime.fromisoformat(data["reference_epoch_utc"])
 
     # Backward track: earliest point should be ~seconds_back before reference.
-    back_epochs = sorted(
-        datetime.datetime.fromisoformat(pt["epoch_utc"])
-        for pt in data["backward_track"]
-    )
+    back_epochs = sorted(datetime.datetime.fromisoformat(pt["epoch_utc"]) for pt in data["backward_track"])
     earliest_back = back_epochs[0]
     earliest_offset_s = (ref_epoch - earliest_back).total_seconds()
     assert abs(earliest_offset_s - seconds_back) <= step_s, (
-        f"Earliest backward point is {earliest_offset_s:.0f}s before reference, "
-        f"expected ~{seconds_back}s"
+        f"Earliest backward point is {earliest_offset_s:.0f}s before reference, expected ~{seconds_back}s"
     )
 
     # Forward track: latest point should be ~seconds_forward after reference.
-    fwd_epochs = sorted(
-        datetime.datetime.fromisoformat(pt["epoch_utc"])
-        for pt in data["forward_track"]
-    )
+    fwd_epochs = sorted(datetime.datetime.fromisoformat(pt["epoch_utc"]) for pt in data["forward_track"])
     latest_fwd = fwd_epochs[-1]
     latest_offset_s = (latest_fwd - ref_epoch).total_seconds()
     assert abs(latest_offset_s - seconds_forward) <= step_s, (
-        f"Latest forward point is {latest_offset_s:.0f}s after reference, "
-        f"expected ~{seconds_forward}s"
+        f"Latest forward point is {latest_offset_s:.0f}s after reference, expected ~{seconds_forward}s"
     )
 
 
@@ -294,9 +274,7 @@ def test_response_includes_norad_id_and_step_s() -> None:
     _insert_tle(db, 25544)
     with TestClient(app) as client:
         _setup_app_state([25544], db)
-        response = client.get(
-            "/object/25544/track?seconds_back=120&seconds_forward=0&step_s=60"
-        )
+        response = client.get("/object/25544/track?seconds_back=120&seconds_forward=0&step_s=60")
     assert response.status_code == 200
     data = response.json()
     assert data["norad_id"] == 25544
@@ -312,9 +290,7 @@ def test_uncertainty_radius_clamped_within_bounds() -> None:
     # At t=60s: 1 + 0.5 * (60/300) = 1.1 km (well within bounds).
     with TestClient(app) as client:
         _setup_app_state([25544], db, filter_states={})
-        response = client.get(
-            "/object/25544/track?seconds_back=0&seconds_forward=300&step_s=60"
-        )
+        response = client.get("/object/25544/track?seconds_back=0&seconds_forward=300&step_s=60")
     assert response.status_code == 200
     data = response.json()
     for pt in data["forward_track"]:

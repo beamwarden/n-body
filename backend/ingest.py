@@ -14,6 +14,7 @@ observation for the ingest->kalman pipeline. This is a deliberate POC simulation
 the sensor-to-catalog pipeline, not a real sensor pipeline. Reviewers should be aware
 of this distinction.
 """
+
 import asyncio
 import datetime
 import json
@@ -160,9 +161,7 @@ def init_catalog_db(db_path: str) -> sqlite3.Connection:
     # Using PRAGMA table_info makes this idempotent; ALTER TABLE ADD COLUMN is safe in SQLite.
     existing_cols = {row["name"] for row in conn.execute("PRAGMA table_info(tle_catalog)").fetchall()}
     if "source" not in existing_cols:
-        conn.execute(
-            "ALTER TABLE tle_catalog ADD COLUMN source TEXT NOT NULL DEFAULT 'space_track'"
-        )
+        conn.execute("ALTER TABLE tle_catalog ADD COLUMN source TEXT NOT NULL DEFAULT 'space_track'")
         logger.info("DB migration: added 'source' column to tle_catalog")
 
     conn.commit()
@@ -199,9 +198,7 @@ def load_catalog_config(config_path: str) -> list[dict]:
         raw: Any = json.load(fh)
 
     if not isinstance(raw, list):
-        raise ValueError(
-            f"Catalog config must be a JSON array, got {type(raw).__name__}"
-        )
+        raise ValueError(f"Catalog config must be a JSON array, got {type(raw).__name__}")
 
     entries: list[dict] = []
     for idx, item in enumerate(raw):
@@ -209,15 +206,11 @@ def load_catalog_config(config_path: str) -> list[dict]:
             raise ValueError(f"Catalog entry {idx} is not a dict: {item!r}")
         for required_field in ("norad_id", "name", "object_class"):
             if required_field not in item:
-                raise ValueError(
-                    f"Catalog entry {idx} missing required field '{required_field}': {item!r}"
-                )
+                raise ValueError(f"Catalog entry {idx} missing required field '{required_field}': {item!r}")
         try:
             item["norad_id"] = int(item["norad_id"])
         except (TypeError, ValueError) as exc:
-            raise ValueError(
-                f"Catalog entry {idx} has non-integer norad_id: {item['norad_id']!r}"
-            ) from exc
+            raise ValueError(f"Catalog entry {idx} has non-integer norad_id: {item['norad_id']!r}") from exc
         entries.append(item)
 
     if not entries:
@@ -382,14 +375,10 @@ async def authenticate() -> str:
     user = os.environ.get("SPACETRACK_USER")
     password = os.environ.get("SPACETRACK_PASS")
     if not user:
-        raise OSError(
-            "SPACETRACK_USER environment variable is not set. "
-            "Set it to your Space-Track.org account email."
-        )
+        raise OSError("SPACETRACK_USER environment variable is not set. Set it to your Space-Track.org account email.")
     if not password:
         raise OSError(
-            "SPACETRACK_PASS environment variable is not set. "
-            "Set it to your Space-Track.org account password."
+            "SPACETRACK_PASS environment variable is not set. Set it to your Space-Track.org account password."
         )
 
     login_payload = {"identity": user, "password": password}
@@ -416,8 +405,7 @@ async def authenticate() -> str:
     cookies = response.cookies
     if not cookies:
         raise RuntimeError(
-            "Space-Track.org authentication succeeded (HTTP 200) but "
-            "no session cookie was returned. Check credentials."
+            "Space-Track.org authentication succeeded (HTTP 200) but no session cookie was returned. Check credentials."
         )
 
     cookie_header = "; ".join(f"{name}={value}" for name, value in cookies.items())
@@ -754,9 +742,9 @@ def _select_n2yo_fallback_ids(
             candidates.append((nid, None))
         else:
             try:
-                epoch_dt = datetime.datetime.strptime(
-                    row["epoch_utc"], "%Y-%m-%dT%H:%M:%SZ"
-                ).replace(tzinfo=datetime.UTC)
+                epoch_dt = datetime.datetime.strptime(row["epoch_utc"], "%Y-%m-%dT%H:%M:%SZ").replace(
+                    tzinfo=datetime.UTC
+                )
             except ValueError:
                 # Unparseable epoch — treat as missing
                 logger.warning(
@@ -863,9 +851,7 @@ async def poll_once(
                     fetched_ids,
                 )
     except Exception as exc:  # noqa: BLE001
-        logger.error(
-            "N2YO fallback block failed (Space-Track inserts are intact): %s", exc
-        )
+        logger.error("N2YO fallback block failed (Space-Track inserts are intact): %s", exc)
     # --------------------------------------------------------------------------
 
     inserted = st_inserted + n2yo_inserted
@@ -880,8 +866,7 @@ async def poll_once(
         logger.debug("Emitted catalog_update event: %s", event)
 
     logger.info(
-        "poll_once complete: %d new TLEs inserted (space_track=%d, n2yo=%d), "
-        "%d catalog entries, fetched_at=%s",
+        "poll_once complete: %d new TLEs inserted (space_track=%d, n2yo=%d), %d catalog entries, fetched_at=%s",
         inserted,
         st_inserted,
         n2yo_inserted,

@@ -5,6 +5,7 @@ Plan reference: docs/plans/2026-03-28-propagator.md Phase 4, steps 7-13.
 ISS TLE fixture (epoch 2024-02-14 ~12:25:32 UTC, NORAD 25544) is used throughout.
 This TLE is hardcoded so tests run offline without any network access.
 """
+
 import datetime
 import math
 import warnings
@@ -36,6 +37,7 @@ _ISS_EPOCH = datetime.datetime(2024, 2, 14, 12, 25, 31, tzinfo=datetime.UTC)
 # Step 7 — test_propagate_tle_returns_correct_shape
 # ---------------------------------------------------------------------------
 
+
 def test_propagate_tle_returns_correct_shape() -> None:
     """propagate_tle returns a tuple of two 3-element float64 arrays.
 
@@ -60,6 +62,7 @@ def test_propagate_tle_returns_correct_shape() -> None:
 # Step 8 — test_propagate_tle_rejects_malformed_tle
 # ---------------------------------------------------------------------------
 
+
 def test_propagate_tle_rejects_malformed_tle() -> None:
     """propagate_tle raises ValueError on malformed TLE input.
 
@@ -79,6 +82,7 @@ def test_propagate_tle_rejects_malformed_tle() -> None:
 # ---------------------------------------------------------------------------
 # Step 9 — test_tle_to_state_vector_returns_6_elements
 # ---------------------------------------------------------------------------
+
 
 def test_tle_to_state_vector_returns_6_elements() -> None:
     """tle_to_state_vector_eci_km returns a physically plausible 6-element array.
@@ -113,6 +117,7 @@ def test_tle_to_state_vector_returns_6_elements() -> None:
 # Step 10 — test_tle_epoch_utc_is_utc_aware
 # ---------------------------------------------------------------------------
 
+
 def test_tle_epoch_utc_is_utc_aware() -> None:
     """tle_epoch_utc returns a UTC-aware datetime matching the TLE epoch.
 
@@ -135,14 +140,13 @@ def test_tle_epoch_utc_is_utc_aware() -> None:
     assert epoch.hour == 12, f"Expected hour 12, got {epoch.hour}"
     assert epoch.minute == 25, f"Expected minute 25, got {epoch.minute}"
     # Allow ±2 seconds for floating-point rounding in fractional-day conversion.
-    assert abs(epoch.second - 31) <= 2, (
-        f"Expected second ~31, got {epoch.second}"
-    )
+    assert abs(epoch.second - 31) <= 2, f"Expected second ~31, got {epoch.second}"
 
 
 # ---------------------------------------------------------------------------
 # Step 11 — test_eci_to_geodetic_returns_lat_lon_alt
 # ---------------------------------------------------------------------------
+
 
 def test_eci_to_geodetic_returns_lat_lon_alt() -> None:
     """eci_to_geodetic returns lat/lon in [-pi, pi] and physically plausible altitude.
@@ -156,28 +160,21 @@ def test_eci_to_geodetic_returns_lat_lon_alt() -> None:
     latitude_rad, longitude_rad, altitude_km = eci_to_geodetic(position_eci_km, epoch_utc)
 
     # lat/lon must be in valid geodetic range
-    assert -math.pi / 2 <= latitude_rad <= math.pi / 2, (
-        f"latitude_rad {latitude_rad:.4f} outside [-pi/2, pi/2]"
-    )
-    assert -math.pi <= longitude_rad <= math.pi, (
-        f"longitude_rad {longitude_rad:.4f} outside [-pi, pi]"
-    )
+    assert -math.pi / 2 <= latitude_rad <= math.pi / 2, f"latitude_rad {latitude_rad:.4f} outside [-pi/2, pi/2]"
+    assert -math.pi <= longitude_rad <= math.pi, f"longitude_rad {longitude_rad:.4f} outside [-pi, pi]"
 
     # altitude should be roughly 400 km ± 50 km for a point at 6778 km from Earth center
     # (Earth equatorial radius ~6378 km)
-    assert 350.0 <= altitude_km <= 450.0, (
-        f"altitude_km {altitude_km:.1f} km outside expected range [350, 450] km"
-    )
+    assert 350.0 <= altitude_km <= 450.0, f"altitude_km {altitude_km:.1f} km outside expected range [350, 450] km"
 
     # Latitude near equator for a point on the +X axis
-    assert abs(latitude_rad) < 0.1, (
-        f"Expected near-equatorial latitude, got {latitude_rad:.4f} rad"
-    )
+    assert abs(latitude_rad) < 0.1, f"Expected near-equatorial latitude, got {latitude_rad:.4f} rad"
 
 
 # ---------------------------------------------------------------------------
 # Step 12 — test_propagation_output_is_eci_j2000
 # ---------------------------------------------------------------------------
+
 
 def test_propagation_output_is_eci_j2000() -> None:
     """Verify TEME-to-J2000 conversion is applied by comparing TEME vs GCRS outputs.
@@ -200,8 +197,11 @@ def test_propagation_output_is_eci_j2000() -> None:
     # Get raw TEME output directly from sgp4 (no frame conversion).
     satrec = Satrec.twoline2rv(_ISS_LINE1, _ISS_LINE2, WGS72)
     jd_whole, jd_frac = sgp4_jday(
-        epoch_utc.year, epoch_utc.month, epoch_utc.day,
-        epoch_utc.hour, epoch_utc.minute,
+        epoch_utc.year,
+        epoch_utc.month,
+        epoch_utc.day,
+        epoch_utc.hour,
+        epoch_utc.minute,
         epoch_utc.second + epoch_utc.microsecond * 1e-6,
     )
     _, position_teme_raw, velocity_teme_raw = satrec.sgp4(jd_whole, jd_frac)
@@ -219,8 +219,7 @@ def test_propagation_output_is_eci_j2000() -> None:
     # (~0.33° for a 2024 TLE), which at ISS altitude (~6770 km) produces ~25-30 km
     # of frame offset. 50 km is a generous upper bound that still catches gross errors.
     assert pos_diff_km > 0.01, (
-        f"Position difference {pos_diff_km:.4f} km is suspiciously small — "
-        "TEME-to-J2000 conversion may not be applied."
+        f"Position difference {pos_diff_km:.4f} km is suspiciously small — TEME-to-J2000 conversion may not be applied."
     )
     assert pos_diff_km < 50.0, (
         f"Position difference {pos_diff_km:.4f} km is larger than expected "
@@ -232,14 +231,13 @@ def test_propagation_output_is_eci_j2000() -> None:
     )
     # 0.05 km/s upper bound: same precession argument as position — ~0.33° rotation
     # applied to ~7.66 km/s orbital speed yields ~0.044 km/s maximum difference.
-    assert vel_diff_km_s < 0.05, (
-        f"Velocity difference {vel_diff_km_s:.6f} km/s larger than expected."
-    )
+    assert vel_diff_km_s < 0.05, f"Velocity difference {vel_diff_km_s:.6f} km/s larger than expected."
 
 
 # ---------------------------------------------------------------------------
 # Step 13 — additional edge-case tests
 # ---------------------------------------------------------------------------
+
 
 def test_propagate_tle_rejects_naive_datetime() -> None:
     """propagate_tle raises ValueError when given a naive (non-UTC-aware) datetime.
