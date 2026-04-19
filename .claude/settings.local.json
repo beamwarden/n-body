@@ -26,7 +26,16 @@
       "Bash(/Users/jebbaugh/.pyenv/versions/3.10.14/bin/pip list:*)",
       "Bash(pip show:*)",
       "Bash(git add:*)",
-      "Bash(git remote:*)"
+      "Bash(git remote:*)",
+      "Bash(sqlite3 /Users/jebbaugh/git/n-body/data/catalog/tle_cache.db \"SELECT name FROM sqlite_master WHERE type='table';\")",
+      "Bash(sqlite3 /Users/jebbaugh/git/n-body/data/catalog/tle_cache.db ':*)",
+      "Bash(sqlite3 /Users/jebbaugh/git/n-body/data/catalog/tle_cache.db \".schema tle_catalog\")",
+      "Bash(sqlite3 /Users/jebbaugh/git/n-body/data/catalog/tle_cache.db \"SELECT DISTINCT norad_id, tle_line1 FROM tle_catalog ORDER BY norad_id\")",
+      "Bash(sqlite3 /Users/jebbaugh/git/n-body/data/catalog/tle_cache.db \"PRAGMA table_info\\(tle_catalog\\);\")",
+      "WebSearch",
+      "WebFetch(domain:keeptrack.space)",
+      "WebFetch(domain:www.satcat.com)",
+      "WebFetch(domain:celestrak.org)"
     ]
   }
 }

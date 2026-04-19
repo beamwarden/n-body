@@ -3,14 +3,14 @@
 Covers the replay_tles() function: state_history writes, empty cache handling,
 and progress output.
 """
+
 import datetime
+import json
+import os
 import sqlite3
 import sys
 import tempfile
-import os
 from pathlib import Path
-from unittest.mock import patch
-import json
 
 import pytest
 
@@ -20,7 +20,6 @@ import backend.anomaly as anomaly
 import backend.ingest as ingest
 import backend.processing as processing
 from scripts.replay import replay_tles
-
 
 # ---------------------------------------------------------------------------
 # ISS TLE for use in replay tests (consistent with test_processing.py)
@@ -61,7 +60,7 @@ def _make_test_db_with_catalog_json(
     processing._ensure_state_history_table(db)
     anomaly.ensure_alerts_table(db)
 
-    fetched_at = datetime.datetime.now(datetime.timezone.utc)
+    fetched_at = datetime.datetime.now(datetime.UTC)
     for norad_id in norad_ids:
         for i in range(tles_per_object):
             epoch = start_epoch_utc + datetime.timedelta(hours=i * interval_hours)
@@ -79,7 +78,6 @@ def _make_test_db_with_catalog_json(
 
 
 class TestReplayTles:
-
     def test_three_tles_produce_state_history_rows(self) -> None:
         """3 TLEs for 1 object should produce at least 1 state_history row.
 
@@ -87,7 +85,7 @@ class TestReplayTles:
         Subsequent TLEs produce predict+update rows. So 3 TLEs -> 3 rows
         (1 cold start + 2 warm updates), unless duplicate epochs occur.
         """
-        start = datetime.datetime(2026, 3, 28, 10, 0, 0, tzinfo=datetime.timezone.utc)
+        start = datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=1)
         db_path, catalog_path = _make_test_db_with_catalog_json(
             norad_ids=[25544],
             tles_per_object=3,
@@ -110,7 +108,10 @@ class TestReplayTles:
 
     def test_empty_cache_exits_without_error(self, capsys) -> None:
         """Empty TLE cache should print a message and exit cleanly (exit code 0)."""
-        import tempfile, json, os
+        import json
+        import os
+        import tempfile
+
         tmpdir = tempfile.mkdtemp()
         db_path = os.path.join(tmpdir, "empty.db")
         catalog_path = os.path.join(tmpdir, "catalog.json")
@@ -135,7 +136,7 @@ class TestReplayTles:
 
     def test_multiple_objects_all_processed(self) -> None:
         """Multiple objects should each get state_history rows."""
-        start = datetime.datetime(2026, 3, 28, 10, 0, 0, tzinfo=datetime.timezone.utc)
+        start = datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=1)
         norad_ids = [25544, 44713]
         db_path, catalog_path = _make_test_db_with_catalog_json(
             norad_ids=norad_ids,
@@ -152,16 +153,14 @@ class TestReplayTles:
 
         db = sqlite3.connect(db_path)
         for nid in norad_ids:
-            cursor = db.execute(
-                "SELECT COUNT(*) FROM state_history WHERE norad_id=?", (nid,)
-            )
+            cursor = db.execute("SELECT COUNT(*) FROM state_history WHERE norad_id=?", (nid,))
             count = cursor.fetchone()[0]
             assert count >= 1, f"Expected state_history rows for NORAD {nid}, got {count}"
         db.close()
 
     def test_progress_printed_to_stdout(self, capsys) -> None:
         """replay_tles should print [replay] progress lines to stdout."""
-        start = datetime.datetime(2026, 3, 28, 10, 0, 0, tzinfo=datetime.timezone.utc)
+        start = datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=1)
         db_path, catalog_path = _make_test_db_with_catalog_json(
             norad_ids=[25544],
             tles_per_object=2,
@@ -181,6 +180,7 @@ class TestReplayTles:
     def test_invalid_catalog_exits_with_1(self) -> None:
         """Non-existent catalog path should exit with code 1."""
         import tempfile
+
         tmpdir = tempfile.mkdtemp()
         db_path = os.path.join(tmpdir, "test.db")
 

@@ -10,6 +10,7 @@ Real TLEs from the test database are used for trajectory generation tests.
 The conjunction detection tests (first/second order) use mocked propagator output
 to guarantee specific miss distances without relying on actual orbital conjunctions.
 """
+
 import datetime
 import unittest
 from unittest.mock import patch
@@ -17,7 +18,6 @@ from unittest.mock import patch
 import numpy as np
 
 import backend.conjunction as conjunction
-
 
 # ---------------------------------------------------------------------------
 # Shared test TLEs (real ISS and DELTA-1 TLEs cached in the test DB)
@@ -33,12 +33,13 @@ _ATLAS_TLE1 = "1 27386U 02009A   26087.86169519  .00000121  00000-0  53150-4 0  
 _ATLAS_TLE2 = "2 27386  98.3758  41.0062 0001214  81.5597 285.6451 14.39043458261937"
 
 # Reference epoch (UTC-aware)
-_EPOCH_UTC = datetime.datetime(2026, 3, 28, 12, 0, 0, tzinfo=datetime.timezone.utc)
+_EPOCH_UTC = datetime.datetime(2026, 3, 28, 12, 0, 0, tzinfo=datetime.UTC)
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_trajectory(
     positions: list[tuple[float, float, float]],
@@ -57,13 +58,16 @@ def _make_trajectory(
 # Tests: generate_trajectory_eci_km
 # ---------------------------------------------------------------------------
 
+
 class TestGenerateTrajectoryEciKm(unittest.TestCase):
     """Tests for conjunction.generate_trajectory_eci_km."""
 
     def test_returns_correct_count(self):
         """Verify 90 points for 5400 s horizon at 60 s steps."""
         traj = conjunction.generate_trajectory_eci_km(
-            _ISS_TLE1, _ISS_TLE2, _EPOCH_UTC,
+            _ISS_TLE1,
+            _ISS_TLE2,
+            _EPOCH_UTC,
             conjunction.SCREENING_HORIZON_S,
             conjunction.SCREENING_STEP_S,
         )
@@ -73,7 +77,9 @@ class TestGenerateTrajectoryEciKm(unittest.TestCase):
     def test_all_eci_j2000(self):
         """Verify all positions are 3-element arrays with magnitudes in LEO range."""
         traj = conjunction.generate_trajectory_eci_km(
-            _ISS_TLE1, _ISS_TLE2, _EPOCH_UTC,
+            _ISS_TLE1,
+            _ISS_TLE2,
+            _EPOCH_UTC,
             conjunction.SCREENING_HORIZON_S,
             conjunction.SCREENING_STEP_S,
         )
@@ -91,9 +97,7 @@ class TestGenerateTrajectoryEciKm(unittest.TestCase):
         """generate_trajectory_eci_km must raise ValueError for naive datetime."""
         naive_epoch = datetime.datetime(2026, 3, 28, 12, 0, 0)
         with self.assertRaises(ValueError):
-            conjunction.generate_trajectory_eci_km(
-                _ISS_TLE1, _ISS_TLE2, naive_epoch, 300, 60
-            )
+            conjunction.generate_trajectory_eci_km(_ISS_TLE1, _ISS_TLE2, naive_epoch, 300, 60)
 
     def test_skips_failed_propagation_steps(self):
         """Verify that SGP4 failures on individual steps are skipped gracefully."""
@@ -108,9 +112,7 @@ class TestGenerateTrajectoryEciKm(unittest.TestCase):
             return original_propagate(line1, line2, epoch)
 
         with patch.object(conjunction.propagator, "propagate_tle", side_effect=flaky_propagate):
-            traj = conjunction.generate_trajectory_eci_km(
-                _ISS_TLE1, _ISS_TLE2, _EPOCH_UTC, 600, 60
-            )
+            traj = conjunction.generate_trajectory_eci_km(_ISS_TLE1, _ISS_TLE2, _EPOCH_UTC, 600, 60)
         # 10 steps total, half fail → expect 5 points.
         self.assertEqual(len(traj), 5)
 
@@ -118,6 +120,7 @@ class TestGenerateTrajectoryEciKm(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # Tests: compute_min_distance_km
 # ---------------------------------------------------------------------------
+
 
 class TestComputeMinDistanceKm(unittest.TestCase):
     """Tests for conjunction.compute_min_distance_km."""
@@ -169,6 +172,7 @@ class TestComputeMinDistanceKm(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # Tests: screen_conjunctions
 # ---------------------------------------------------------------------------
+
 
 class TestScreenConjunctions(unittest.TestCase):
     """Tests for conjunction.screen_conjunctions using mocked propagate_tle."""
@@ -253,12 +257,12 @@ class TestScreenConjunctions(unittest.TestCase):
         # NORAD 25544 (A) close to NORAD 27424 (B); B close to NORAD 27386 (C).
         other_objects = [
             {"norad_id": 27424, "tle_line1": _DELTA1_TLE1, "tle_line2": _DELTA1_TLE2},
-            {"norad_id": 27386, "tle_line1": _ATLAS_TLE1,  "tle_line2": _ATLAS_TLE2},
+            {"norad_id": 27386, "tle_line1": _ATLAS_TLE1, "tle_line2": _ATLAS_TLE2},
         ]
         positions_by_norad = {
-            25544: [(7000.0, 0.0, 0.0)] * 90,    # A
-            27424: [(7003.0, 0.0, 0.0)] * 90,    # B: 3 km from A → first-order
-            27386: [(7003.0, 8.0, 0.0)] * 90,    # C: 8 km from B → second-order
+            25544: [(7000.0, 0.0, 0.0)] * 90,  # A
+            27424: [(7003.0, 0.0, 0.0)] * 90,  # B: 3 km from A → first-order
+            27386: [(7003.0, 8.0, 0.0)] * 90,  # C: 8 km from B → second-order
         }
         with patch.object(
             conjunction.propagator,
@@ -271,9 +275,7 @@ class TestScreenConjunctions(unittest.TestCase):
                 anomalous_tle_line2=_ISS_TLE2,
                 screening_epoch_utc=_EPOCH_UTC,
                 other_objects=other_objects,
-                catalog_name_map={
-                    25544: "ISS", 27424: "DELTA 1 R/B", 27386: "ATLAS 5 CENTAUR R/B"
-                },
+                catalog_name_map={25544: "ISS", 27424: "DELTA 1 R/B", 27386: "ATLAS 5 CENTAUR R/B"},
             )
         self.assertEqual(len(result["first_order"]), 1)
         self.assertEqual(result["first_order"][0]["norad_id"], 27424)
@@ -286,8 +288,13 @@ class TestScreenConjunctions(unittest.TestCase):
     def test_result_schema_all_keys_present(self):
         """Verify all required keys are present in the result dict."""
         required_top_level = {
-            "type", "anomalous_norad_id", "screening_epoch_utc",
-            "horizon_s", "threshold_km", "first_order", "second_order",
+            "type",
+            "anomalous_norad_id",
+            "screening_epoch_utc",
+            "horizon_s",
+            "threshold_km",
+            "first_order",
+            "second_order",
         }
         positions_by_norad = {25544: [(7000.0, 0.0, 0.0)] * 90}
         with patch.object(
@@ -344,7 +351,7 @@ class TestScreenConjunctions(unittest.TestCase):
         """Each second_order entry must have norad_id, name, min_distance_km, TCA, via_norad_id."""
         other_objects = [
             {"norad_id": 27424, "tle_line1": _DELTA1_TLE1, "tle_line2": _DELTA1_TLE2},
-            {"norad_id": 27386, "tle_line1": _ATLAS_TLE1,  "tle_line2": _ATLAS_TLE2},
+            {"norad_id": 27386, "tle_line1": _ATLAS_TLE1, "tle_line2": _ATLAS_TLE2},
         ]
         positions_by_norad = {
             25544: [(7000.0, 0.0, 0.0)] * 90,
@@ -362,9 +369,7 @@ class TestScreenConjunctions(unittest.TestCase):
                 anomalous_tle_line2=_ISS_TLE2,
                 screening_epoch_utc=_EPOCH_UTC,
                 other_objects=other_objects,
-                catalog_name_map={
-                    25544: "ISS", 27424: "DELTA 1 R/B", 27386: "ATLAS 5 CENTAUR R/B"
-                },
+                catalog_name_map={25544: "ISS", 27424: "DELTA 1 R/B", 27386: "ATLAS 5 CENTAUR R/B"},
             )
         self.assertEqual(len(result["second_order"]), 1)
         entry = result["second_order"][0]

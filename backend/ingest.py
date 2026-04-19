@@ -14,13 +14,14 @@ observation for the ingest->kalman pipeline. This is a deliberate POC simulation
 the sensor-to-catalog pipeline, not a real sensor pipeline. Reviewers should be aware
 of this distinction.
 """
+
 import asyncio
 import datetime
 import json
 import logging
 import os
 import sqlite3
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -160,9 +161,7 @@ def init_catalog_db(db_path: str) -> sqlite3.Connection:
     # Using PRAGMA table_info makes this idempotent; ALTER TABLE ADD COLUMN is safe in SQLite.
     existing_cols = {row["name"] for row in conn.execute("PRAGMA table_info(tle_catalog)").fetchall()}
     if "source" not in existing_cols:
-        conn.execute(
-            "ALTER TABLE tle_catalog ADD COLUMN source TEXT NOT NULL DEFAULT 'space_track'"
-        )
+        conn.execute("ALTER TABLE tle_catalog ADD COLUMN source TEXT NOT NULL DEFAULT 'space_track'")
         logger.info("DB migration: added 'source' column to tle_catalog")
 
     conn.commit()
@@ -195,13 +194,11 @@ def load_catalog_config(config_path: str) -> list[dict]:
         FileNotFoundError: If the config file does not exist.
         ValueError: If the JSON is malformed or missing required fields.
     """
-    with open(config_path, "r", encoding="utf-8") as fh:
+    with open(config_path, encoding="utf-8") as fh:
         raw: Any = json.load(fh)
 
     if not isinstance(raw, list):
-        raise ValueError(
-            f"Catalog config must be a JSON array, got {type(raw).__name__}"
-        )
+        raise ValueError(f"Catalog config must be a JSON array, got {type(raw).__name__}")
 
     entries: list[dict] = []
     for idx, item in enumerate(raw):
@@ -209,15 +206,11 @@ def load_catalog_config(config_path: str) -> list[dict]:
             raise ValueError(f"Catalog entry {idx} is not a dict: {item!r}")
         for required_field in ("norad_id", "name", "object_class"):
             if required_field not in item:
-                raise ValueError(
-                    f"Catalog entry {idx} missing required field '{required_field}': {item!r}"
-                )
+                raise ValueError(f"Catalog entry {idx} missing required field '{required_field}': {item!r}")
         try:
             item["norad_id"] = int(item["norad_id"])
         except (TypeError, ValueError) as exc:
-            raise ValueError(
-                f"Catalog entry {idx} has non-integer norad_id: {item['norad_id']!r}"
-            ) from exc
+            raise ValueError(f"Catalog entry {idx} has non-integer norad_id: {item['norad_id']!r}") from exc
         entries.append(item)
 
     if not entries:
@@ -288,7 +281,7 @@ def cache_tles(
 def get_cached_tles(
     db: sqlite3.Connection,
     norad_id: int,
-    since_utc: Optional[datetime.datetime] = None,
+    since_utc: datetime.datetime | None = None,
 ) -> list[dict]:
     """Retrieve cached TLEs for a given NORAD ID from local storage.
 
@@ -333,7 +326,7 @@ def get_cached_tles(
     return [dict(row) for row in rows]
 
 
-def get_latest_tle(db: sqlite3.Connection, norad_id: int) -> Optional[dict]:
+def get_latest_tle(db: sqlite3.Connection, norad_id: int) -> dict | None:
     """Retrieve the most recent cached TLE for a given NORAD ID.
 
     "Most recent" is determined by epoch_utc (the TLE orbital epoch),
@@ -382,19 +375,15 @@ async def authenticate() -> str:
     user = os.environ.get("SPACETRACK_USER")
     password = os.environ.get("SPACETRACK_PASS")
     if not user:
-        raise EnvironmentError(
-            "SPACETRACK_USER environment variable is not set. "
-            "Set it to your Space-Track.org account email."
-        )
+        raise OSError("SPACETRACK_USER environment variable is not set. Set it to your Space-Track.org account email.")
     if not password:
-        raise EnvironmentError(
-            "SPACETRACK_PASS environment variable is not set. "
-            "Set it to your Space-Track.org account password."
+        raise OSError(
+            "SPACETRACK_PASS environment variable is not set. Set it to your Space-Track.org account password."
         )
 
     login_payload = {"identity": user, "password": password}
 
-    call_time_utc = datetime.datetime.now(datetime.timezone.utc)
+    call_time_utc = datetime.datetime.now(datetime.UTC)
     logger.info(
         "F-006 SPACETRACK_API_CALL timestamp=%s endpoint=%s",
         call_time_utc.isoformat(),
@@ -406,7 +395,7 @@ async def authenticate() -> str:
 
     logger.info(
         "F-006 SPACETRACK_API_RESPONSE timestamp=%s endpoint=%s status=%d",
-        datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        datetime.datetime.now(datetime.UTC).isoformat(),
         _SPACETRACK_LOGIN_URL,
         response.status_code,
     )
@@ -416,8 +405,7 @@ async def authenticate() -> str:
     cookies = response.cookies
     if not cookies:
         raise RuntimeError(
-            "Space-Track.org authentication succeeded (HTTP 200) but "
-            "no session cookie was returned. Check credentials."
+            "Space-Track.org authentication succeeded (HTTP 200) but no session cookie was returned. Check credentials."
         )
 
     cookie_header = "; ".join(f"{name}={value}" for name, value in cookies.items())
@@ -458,7 +446,7 @@ async def fetch_tles(norad_ids: list[int], session_cookie: str) -> list[dict]:
         f"/orderby/EPOCH desc/limit/{len(norad_ids)}/format/tle"
     )
 
-    call_time_utc = datetime.datetime.now(datetime.timezone.utc)
+    call_time_utc = datetime.datetime.now(datetime.UTC)
     logger.info(
         "F-006 SPACETRACK_API_CALL timestamp=%s endpoint=%s norad_count=%d",
         call_time_utc.isoformat(),
@@ -473,7 +461,7 @@ async def fetch_tles(norad_ids: list[int], session_cookie: str) -> list[dict]:
 
     logger.info(
         "F-006 SPACETRACK_API_RESPONSE timestamp=%s endpoint=%s status=%d content_length=%d",
-        datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        datetime.datetime.now(datetime.UTC).isoformat(),
         url,
         response.status_code,
         len(response.content),
@@ -582,7 +570,7 @@ def _parse_tle_epoch_utc(tle_line1: str) -> str:
     # day_of_year_frac is 1-based: 1.0 = Jan 1 00:00:00
     day_int = int(day_of_year_frac)
     frac_day = day_of_year_frac - day_int
-    epoch_dt = datetime.datetime(year, 1, 1, tzinfo=datetime.timezone.utc) + datetime.timedelta(
+    epoch_dt = datetime.datetime(year, 1, 1, tzinfo=datetime.UTC) + datetime.timedelta(
         days=day_int - 1, seconds=frac_day * 86400.0
     )
 
@@ -593,7 +581,7 @@ async def fetch_tle_n2yo(
     norad_id: int,
     api_key: str,
     client: httpx.AsyncClient,
-) -> Optional[dict]:
+) -> dict | None:
     """Fetch a single TLE from N2YO for the given NORAD ID.
 
     N2YO is a supplemental fallback source only. The returned dict has the same
@@ -617,7 +605,7 @@ async def fetch_tle_n2yo(
     url = f"{_N2YO_TLE_URL_TEMPLATE.format(norad_id=norad_id)}&apiKey={api_key}"
     redacted_url = f"{_N2YO_TLE_URL_TEMPLATE.format(norad_id=norad_id)}&apiKey=***"
 
-    call_time_utc = datetime.datetime.now(datetime.timezone.utc)
+    call_time_utc = datetime.datetime.now(datetime.UTC)
     logger.info(
         "F-006 N2YO_API_CALL timestamp=%s endpoint=%s norad_id=%d",
         call_time_utc.isoformat(),
@@ -638,7 +626,7 @@ async def fetch_tle_n2yo(
 
     logger.info(
         "F-006 N2YO_API_RESPONSE timestamp=%s endpoint=%s norad_id=%d status=%d",
-        datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        datetime.datetime.now(datetime.UTC).isoformat(),
         redacted_url,
         norad_id,
         response.status_code,
@@ -745,7 +733,7 @@ def _select_n2yo_fallback_ids(
     stale_cutoff = now_utc - datetime.timedelta(seconds=stale_threshold_s)
 
     # Collect (norad_id, epoch_utc_or_None) pairs, sorted oldest-first
-    candidates: list[tuple[int, Optional[datetime.datetime]]] = []
+    candidates: list[tuple[int, datetime.datetime | None]] = []
 
     for nid in norad_ids:
         row = get_latest_tle(db, nid)
@@ -754,9 +742,9 @@ def _select_n2yo_fallback_ids(
             candidates.append((nid, None))
         else:
             try:
-                epoch_dt = datetime.datetime.strptime(
-                    row["epoch_utc"], "%Y-%m-%dT%H:%M:%SZ"
-                ).replace(tzinfo=datetime.timezone.utc)
+                epoch_dt = datetime.datetime.strptime(row["epoch_utc"], "%Y-%m-%dT%H:%M:%SZ").replace(
+                    tzinfo=datetime.UTC
+                )
             except ValueError:
                 # Unparseable epoch — treat as missing
                 logger.warning(
@@ -772,9 +760,9 @@ def _select_n2yo_fallback_ids(
             # else: fresh — skip
 
     # Sort: None epochs (no TLE at all) go first, then oldest epoch first
-    def _sort_key(item: tuple[int, Optional[datetime.datetime]]) -> datetime.datetime:
+    def _sort_key(item: tuple[int, datetime.datetime | None]) -> datetime.datetime:
         if item[1] is None:
-            return datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
+            return datetime.datetime.min.replace(tzinfo=datetime.UTC)
         return item[1]
 
     candidates.sort(key=_sort_key)
@@ -785,7 +773,7 @@ def _select_n2yo_fallback_ids(
 async def poll_once(
     db: sqlite3.Connection,
     catalog_entries: list[dict],
-    event_bus: Optional[asyncio.Queue] = None,
+    event_bus: asyncio.Queue | None = None,
 ) -> int:
     """Perform a single poll cycle: authenticate, fetch, validate, cache, emit.
 
@@ -827,7 +815,7 @@ async def poll_once(
     session_cookie = await authenticate()
     tles = await fetch_tles(norad_ids, session_cookie)
 
-    fetched_at_utc = datetime.datetime.now(datetime.timezone.utc)
+    fetched_at_utc = datetime.datetime.now(datetime.UTC)
     st_inserted = cache_tles(db, tles, fetched_at_utc, source="space_track")
     n2yo_inserted = 0
 
@@ -863,9 +851,7 @@ async def poll_once(
                     fetched_ids,
                 )
     except Exception as exc:  # noqa: BLE001
-        logger.error(
-            "N2YO fallback block failed (Space-Track inserts are intact): %s", exc
-        )
+        logger.error("N2YO fallback block failed (Space-Track inserts are intact): %s", exc)
     # --------------------------------------------------------------------------
 
     inserted = st_inserted + n2yo_inserted
@@ -880,8 +866,7 @@ async def poll_once(
         logger.debug("Emitted catalog_update event: %s", event)
 
     logger.info(
-        "poll_once complete: %d new TLEs inserted (space_track=%d, n2yo=%d), "
-        "%d catalog entries, fetched_at=%s",
+        "poll_once complete: %d new TLEs inserted (space_track=%d, n2yo=%d), %d catalog entries, fetched_at=%s",
         inserted,
         st_inserted,
         n2yo_inserted,
@@ -892,9 +877,9 @@ async def poll_once(
 
 
 async def run_ingest_loop(
-    db_path: Optional[str] = None,
-    catalog_config_path: Optional[str] = None,
-    event_bus: Optional[asyncio.Queue] = None,
+    db_path: str | None = None,
+    catalog_config_path: str | None = None,
+    event_bus: asyncio.Queue | None = None,
 ) -> None:
     """Run the continuous TLE polling loop.
 
@@ -934,7 +919,7 @@ async def run_ingest_loop(
     while True:
         try:
             await poll_once(db, catalog_entries, event_bus=event_bus)
-        except EnvironmentError:
+        except OSError:
             # Credential errors are not recoverable — re-raise to surface immediately
             raise
         except httpx.HTTPStatusError as exc:

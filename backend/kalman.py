@@ -10,8 +10,8 @@ noisy observations. This is a simulation fidelity boundary — real sensor data 
 not used in this POC. Reviewers should note that measurement noise R reflects
 TLE accuracy class rather than actual sensor noise.
 """
+
 import datetime
-from typing import Optional
 
 import numpy as np
 from numpy.typing import NDArray
@@ -37,17 +37,11 @@ OBJECT_CLASS_ROCKET_BODY: str = "rocket_body"
 #   sigma_pos ~ 0.5 km, sigma_vel ~ 0.05 km/s
 # Rocket body: intermediate drag uncertainty, inert.
 #   sigma_pos ~ 0.75 km, sigma_vel ~ 0.02 km/s
-_Q_DEBRIS: NDArray[np.float64] = np.diag(
-    [1.0, 1.0, 1.0, 1e-4, 1e-4, 1e-4]
-).astype(np.float64)
+_Q_DEBRIS: NDArray[np.float64] = np.diag([1.0, 1.0, 1.0, 1e-4, 1e-4, 1e-4]).astype(np.float64)
 
-_Q_ACTIVE_SATELLITE: NDArray[np.float64] = np.diag(
-    [0.25, 0.25, 0.25, 25e-4, 25e-4, 25e-4]
-).astype(np.float64)
+_Q_ACTIVE_SATELLITE: NDArray[np.float64] = np.diag([0.25, 0.25, 0.25, 25e-4, 25e-4, 25e-4]).astype(np.float64)
 
-_Q_ROCKET_BODY: NDArray[np.float64] = np.diag(
-    [0.5625, 0.5625, 0.5625, 4e-4, 4e-4, 4e-4]
-).astype(np.float64)
+_Q_ROCKET_BODY: NDArray[np.float64] = np.diag([0.5625, 0.5625, 0.5625, 4e-4, 4e-4, 4e-4]).astype(np.float64)
 
 OBJECT_CLASS_Q: dict[str, NDArray[np.float64]] = {
     OBJECT_CLASS_DEBRIS: _Q_DEBRIS,
@@ -61,9 +55,7 @@ OBJECT_CLASS_Q: dict[str, NDArray[np.float64]] = {
 # 0.045^2 ≈ 0.002 (km/s)^2 velocity.  Using tighter values (e.g. 1.0 km^2) causes
 # NIS >> threshold on every normal update, driving perpetual spurious recalibration.
 # These are diagonal; off-diagonal correlation is neglected for POC.
-DEFAULT_R: NDArray[np.float64] = np.diag(
-    [900.0, 900.0, 900.0, 2e-3, 2e-3, 2e-3]
-).astype(np.float64)
+DEFAULT_R: NDArray[np.float64] = np.diag([900.0, 900.0, 900.0, 2e-3, 2e-3, 2e-3]).astype(np.float64)
 
 
 def _make_default_covariance_p0(
@@ -81,8 +73,7 @@ def _make_default_covariance_p0(
     Returns:
         6x6 diagonal covariance matrix in km^2 and (km/s)^2.
     """
-    p0_diag = np.array([100.0, 100.0, 100.0, 0.01, 0.01, 0.01],
-                       dtype=np.float64)
+    p0_diag = np.array([100.0, 100.0, 100.0, 0.01, 0.01, 0.01], dtype=np.float64)
     return np.diag(p0_diag * inflation_factor)
 
 
@@ -104,8 +95,8 @@ def _identity_hx(state_eci_km: NDArray[np.float64]) -> NDArray[np.float64]:
 def init_filter(
     state_eci_km: NDArray[np.float64],
     epoch_utc: datetime.datetime,
-    process_noise_q: Optional[NDArray[np.float64]] = None,
-    measurement_noise_r: Optional[NDArray[np.float64]] = None,
+    process_noise_q: NDArray[np.float64] | None = None,
+    measurement_noise_r: NDArray[np.float64] | None = None,
 ) -> dict:
     """Initialize a UKF instance for a single tracked object.
 
@@ -119,24 +110,18 @@ def init_filter(
         Dict containing the filter object, last epoch, and metadata.
         Keys: 'filter', 'last_epoch_utc', 'norad_id', 'covariance_km2'.
     """
-    from filterpy.kalman import UnscentedKalmanFilter, MerweScaledSigmaPoints
+    from filterpy.kalman import MerweScaledSigmaPoints, UnscentedKalmanFilter
 
     if epoch_utc.tzinfo is None:
         raise ValueError("epoch_utc must be UTC-aware")
 
     if state_eci_km.shape != (6,):
-        raise ValueError(
-            f"state_eci_km must have shape (6,), got {state_eci_km.shape}"
-        )
+        raise ValueError(f"state_eci_km must have shape (6,), got {state_eci_km.shape}")
 
     q_matrix: NDArray[np.float64] = (
-        process_noise_q if process_noise_q is not None
-        else OBJECT_CLASS_Q[OBJECT_CLASS_ACTIVE]
+        process_noise_q if process_noise_q is not None else OBJECT_CLASS_Q[OBJECT_CLASS_ACTIVE]
     )
-    r_matrix: NDArray[np.float64] = (
-        measurement_noise_r if measurement_noise_r is not None
-        else DEFAULT_R
-    )
+    r_matrix: NDArray[np.float64] = measurement_noise_r if measurement_noise_r is not None else DEFAULT_R
 
     points = MerweScaledSigmaPoints(n=6, alpha=1e-3, beta=2.0, kappa=0.0)
 
@@ -145,9 +130,9 @@ def init_filter(
     ukf = UnscentedKalmanFilter(
         dim_x=6,
         dim_z=6,
-        dt=1.0,           # nominal dt in seconds; overridden in each predict call
+        dt=1.0,  # nominal dt in seconds; overridden in each predict call
         hx=_identity_hx,  # measurement function (identity: full-state observation)
-        fx=None,          # placeholder; set per predict call via closure
+        fx=None,  # placeholder; set per predict call via closure
         points=points,
     )
     ukf.x = state_eci_km.copy().astype(np.float64)
@@ -161,7 +146,7 @@ def init_filter(
         "q_matrix": q_matrix.copy(),
         "r_matrix": r_matrix.copy(),
         "nis": 0.0,
-        "nis_history": [],        # list[float], appended on each update
+        "nis_history": [],  # list[float], appended on each update
         "innovation_eci_km": np.zeros(6, dtype=np.float64),
         "anomaly_flag": False,
         "confidence": 1.0,
@@ -199,9 +184,7 @@ def predict(
     if "last_epoch_utc" not in filter_state:
         raise KeyError("filter_state missing required key: 'last_epoch_utc'")
 
-    dt_s: float = (
-        target_epoch_utc - filter_state["last_epoch_utc"]
-    ).total_seconds()
+    dt_s: float = (target_epoch_utc - filter_state["last_epoch_utc"]).total_seconds()
 
     if dt_s <= 0:
         raise ValueError("target_epoch_utc must be after last_epoch_utc")
@@ -219,9 +202,7 @@ def predict(
         # the UKF sigma-point distribution. For SGP4 as the process model,
         # we propagate using the TLE (not the sigma-point state), because SGP4
         # is a trajectory model, not a force model — see design note above.
-        return _propagator.tle_to_state_vector_eci_km(
-            tle_line1, tle_line2, target_epoch_utc
-        )
+        return _propagator.tle_to_state_vector_eci_km(tle_line1, tle_line2, target_epoch_utc)
 
     filter_state["filter"].fx = _fx_sgp4
     filter_state["filter"].predict(dt=dt_s)
@@ -254,9 +235,7 @@ def update(
         raise ValueError("epoch_utc must be UTC-aware")
 
     if observation_eci_km.shape != (6,):
-        raise ValueError(
-            f"observation_eci_km must have shape (6,), got {observation_eci_km.shape}"
-        )
+        raise ValueError(f"observation_eci_km must have shape (6,), got {observation_eci_km.shape}")
 
     ukf = filter_state["filter"]
     ukf.update(observation_eci_km.astype(np.float64))
@@ -277,9 +256,7 @@ def update(
     if len(filter_state["nis_history"]) > 20:
         filter_state["nis_history"] = filter_state["nis_history"][-20:]
 
-    filter_state["confidence"] = compute_confidence(
-        nis_val, filter_state["nis_history"]
-    )
+    filter_state["confidence"] = compute_confidence(nis_val, filter_state["nis_history"])
 
     return filter_state
 

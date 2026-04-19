@@ -7,19 +7,14 @@ structure validation.
 Test numbering follows the plan docs/plans/2026-03-29-demo-scenario.md
 test strategy section.
 """
+
 import datetime
 import json
-import math
-import os
 import sqlite3
 import sys
-import tempfile
 from pathlib import Path
-from typing import Optional
-from unittest import mock
 
 import numpy as np
-import pytest
 
 # Add project root to path so scripts and backend packages can be imported.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -38,7 +33,7 @@ _ISS_TLE_LINE2 = "2 25544  51.6400 208.9163 0006703 124.7256 235.4562 15.5424419
 
 def _seed_primary_tle(db: sqlite3.Connection) -> None:
     """Insert the ISS TLE fixture into an in-memory DB for use by tests."""
-    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    now_utc = datetime.datetime.now(datetime.UTC)
     tle_record = {
         "norad_id": 25544,
         "epoch_utc": "2026-03-28T12:00:00Z",
@@ -51,6 +46,7 @@ def _seed_primary_tle(db: sqlite3.Connection) -> None:
 # ---------------------------------------------------------------------------
 # Test 1: test_clear_removes_synthetic_object
 # ---------------------------------------------------------------------------
+
 
 def test_clear_removes_synthetic_object(tmp_path: Path) -> None:
     """Running --clear removes NORAD 99999 from catalog.json and TLE cache."""
@@ -65,16 +61,16 @@ def test_clear_removes_synthetic_object(tmp_path: Path) -> None:
 
     db_path = str(tmp_path / "tle_cache.db")
     db = ingest.init_catalog_db(db_path)
-    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    now_utc = datetime.datetime.now(datetime.UTC)
     ingest.cache_tles(
         db,
-        [{"norad_id": 99999, "epoch_utc": "2026-03-28T12:00:00Z",
-          "tle_line1": "X", "tle_line2": "Y"}],
+        [{"norad_id": 99999, "epoch_utc": "2026-03-28T12:00:00Z", "tle_line1": "X", "tle_line2": "Y"}],
         fetched_at_utc=now_utc,
     )
 
     # Act: import and call _clear_synthetic_threat.
     from scripts.seed_conjunction import _clear_synthetic_threat
+
     _clear_synthetic_threat(catalog_path=catalog_path, db=db)
     db.close()
 
@@ -96,6 +92,7 @@ def test_clear_removes_synthetic_object(tmp_path: Path) -> None:
 # Test 2: test_threat_tle_passes_checksum
 # ---------------------------------------------------------------------------
 
+
 def test_threat_tle_passes_checksum(tmp_path: Path) -> None:
     """Generated threat TLE passes ingest.validate_tle checksum check."""
     db_path = str(tmp_path / "tle_cache.db")
@@ -103,6 +100,7 @@ def test_threat_tle_passes_checksum(tmp_path: Path) -> None:
     _seed_primary_tle(db)
 
     from scripts.seed_conjunction import generate_threat_tle
+
     syn_line1, syn_line2, _ = generate_threat_tle(
         primary_norad_id=25544,
         offset_min=30.0,
@@ -119,6 +117,7 @@ def test_threat_tle_passes_checksum(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # Test 3: test_threat_conjunction_within_threshold
 # ---------------------------------------------------------------------------
+
 
 def test_threat_conjunction_within_threshold(tmp_path: Path) -> None:
     """Option B: threat TLE propagates to within ~miss_km of the primary at conjunction epoch.
@@ -145,12 +144,8 @@ def test_threat_conjunction_within_threshold(tmp_path: Path) -> None:
     )
 
     # Propagate primary and threat to conjunction epoch.
-    primary_pos_km, _ = propagator.propagate_tle(
-        _ISS_TLE_LINE1, _ISS_TLE_LINE2, conjunction_epoch_utc
-    )
-    threat_pos_km, _ = propagator.propagate_tle(
-        syn_line1, syn_line2, conjunction_epoch_utc
-    )
+    primary_pos_km, _ = propagator.propagate_tle(_ISS_TLE_LINE1, _ISS_TLE_LINE2, conjunction_epoch_utc)
+    threat_pos_km, _ = propagator.propagate_tle(syn_line1, syn_line2, conjunction_epoch_utc)
     db.close()
 
     actual_dist_km = float(np.linalg.norm(threat_pos_km - primary_pos_km))
@@ -180,6 +175,7 @@ def test_threat_conjunction_within_threshold(tmp_path: Path) -> None:
 # Test 4: test_threat_inserted_into_db
 # ---------------------------------------------------------------------------
 
+
 def test_threat_inserted_into_db(tmp_path: Path) -> None:
     """After injection, get_latest_tle(db, 99999) returns a valid record."""
     db_path = str(tmp_path / "tle_cache.db")
@@ -194,6 +190,7 @@ def test_threat_inserted_into_db(tmp_path: Path) -> None:
     db.close()
 
     from scripts.seed_conjunction import inject_conjunction
+
     inject_conjunction(
         primary_norad_id=25544,
         offset_min=30.0,
@@ -217,6 +214,7 @@ def test_threat_inserted_into_db(tmp_path: Path) -> None:
 # Test 5: test_catalog_json_updated
 # ---------------------------------------------------------------------------
 
+
 def test_catalog_json_updated(tmp_path: Path) -> None:
     """After injection, catalog.json contains an entry with norad_id=99999."""
     db_path = str(tmp_path / "tle_cache.db")
@@ -230,6 +228,7 @@ def test_catalog_json_updated(tmp_path: Path) -> None:
     db.close()
 
     from scripts.seed_conjunction import inject_conjunction
+
     inject_conjunction(
         primary_norad_id=25544,
         offset_min=30.0,
@@ -250,6 +249,7 @@ def test_catalog_json_updated(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 # Test 6: test_idempotent_reinsertion
 # ---------------------------------------------------------------------------
+
 
 def test_idempotent_reinsertion(tmp_path: Path) -> None:
     """Running inject_conjunction twice does not crash or create duplicate catalog entries."""
@@ -291,14 +291,13 @@ def test_idempotent_reinsertion(tmp_path: Path) -> None:
     with open(catalog_path) as fh:
         updated_catalog = json.load(fh)
     threat_entries = [e for e in updated_catalog if e["norad_id"] == 99999]
-    assert len(threat_entries) == 1, (
-        f"Expected exactly 1 NORAD 99999 entry, got {len(threat_entries)}"
-    )
+    assert len(threat_entries) == 1, f"Expected exactly 1 NORAD 99999 entry, got {len(threat_entries)}"
 
 
 # ---------------------------------------------------------------------------
 # Test 7: test_full_conjunction_scenario (integration)
 # ---------------------------------------------------------------------------
+
 
 def test_full_conjunction_scenario(tmp_path: Path) -> None:
     """End-to-end: inject threat and verify conjunction.screen_conjunctions triggers.
@@ -317,6 +316,7 @@ def test_full_conjunction_scenario(tmp_path: Path) -> None:
     db.close()
 
     from scripts.seed_conjunction import inject_conjunction
+
     inject_conjunction(
         primary_norad_id=25544,
         offset_min=30.0,
@@ -344,7 +344,7 @@ def test_full_conjunction_scenario(tmp_path: Path) -> None:
     # DEVIATION from plan step 7 test pseudocode: plan described a simplified call
     # signature; actual backend/conjunction.py uses anomalous_norad_id and
     # catalog_name_map parameters. Adapted to match the real interface.
-    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    now_utc = datetime.datetime.now(datetime.UTC)
     result = conjunction.screen_conjunctions(
         anomalous_norad_id=25544,
         anomalous_tle_line1=primary_tle["tle_line1"],
@@ -390,6 +390,7 @@ def test_full_conjunction_scenario(tmp_path: Path) -> None:
 # Test 8: test_catalog_json_valid_structure
 # ---------------------------------------------------------------------------
 
+
 def test_catalog_json_valid_structure() -> None:
     """The VLEO-rebuilt catalog.json has valid structure and correct count.
 
@@ -407,10 +408,8 @@ def test_catalog_json_valid_structure() -> None:
     # fails the original assertion. Count range updated to [75, 105] per the
     # plan's stated 80-100 target. Flagged for planner review.
     """
-    catalog_path = str(
-        Path(__file__).resolve().parent.parent / "data" / "catalog" / "catalog.json"
-    )
-    with open(catalog_path, "r", encoding="utf-8") as fh:
+    catalog_path = str(Path(__file__).resolve().parent.parent / "data" / "catalog" / "catalog.json")
+    with open(catalog_path, encoding="utf-8") as fh:
         catalog = json.load(fh)
 
     assert isinstance(catalog, list), "catalog.json must be a JSON array"
@@ -423,41 +422,34 @@ def test_catalog_json_valid_structure() -> None:
         for field in ("norad_id", "name", "object_class"):
             assert field in entry, f"Entry {idx} missing field '{field}': {entry!r}"
         assert entry["object_class"] in valid_object_classes, (
-            f"Entry {idx} has invalid object_class '{entry['object_class']}': "
-            f"must be one of {valid_object_classes}"
+            f"Entry {idx} has invalid object_class '{entry['object_class']}': must be one of {valid_object_classes}"
         )
         norad_id = int(entry["norad_id"])
-        assert norad_id not in norad_ids_seen, (
-            f"Duplicate NORAD ID {norad_id} at entry {idx}"
-        )
+        assert norad_id not in norad_ids_seen, f"Duplicate NORAD ID {norad_id} at entry {idx}"
         norad_ids_seen.add(norad_id)
 
     # Count must be in [60, 105] per VLEO rebuild plan (73-object post-verification
     # baseline after removing 11 failed altitude checks; 60 lower bound allows for
     # further pruning if additional IDs fail on TLE rebuild).
     count = len(catalog)
-    assert 60 <= count <= 105, (
-        f"Catalog count {count} is outside [60, 105] — expected 60-100 verified VLEO objects"
-    )
+    assert 60 <= count <= 105, f"Catalog count {count} is outside [60, 105] — expected 60-100 verified VLEO objects"
 
 
 # ---------------------------------------------------------------------------
 # Test 9: test_catalog_no_synthetic_ids
 # ---------------------------------------------------------------------------
 
+
 def test_catalog_no_synthetic_ids() -> None:
     """The production catalog.json has no NORAD IDs >= 90000.
 
     NORAD 99999 should only appear after seed_conjunction.py runs.
     """
-    catalog_path = str(
-        Path(__file__).resolve().parent.parent / "data" / "catalog" / "catalog.json"
-    )
-    with open(catalog_path, "r", encoding="utf-8") as fh:
+    catalog_path = str(Path(__file__).resolve().parent.parent / "data" / "catalog" / "catalog.json")
+    with open(catalog_path, encoding="utf-8") as fh:
         catalog = json.load(fh)
 
     synthetic_entries = [e for e in catalog if int(e["norad_id"]) >= 90000]
     assert len(synthetic_entries) == 0, (
-        f"Found synthetic NORAD IDs >= 90000 in production catalog: "
-        f"{[e['norad_id'] for e in synthetic_entries]}"
+        f"Found synthetic NORAD IDs >= 90000 in production catalog: {[e['norad_id'] for e in synthetic_entries]}"
     )

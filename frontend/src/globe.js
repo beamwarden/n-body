@@ -150,12 +150,97 @@ export function initGlobe(containerId, ionToken) {
         // TD-026: add globe imagery selection to UI or config (post-POC).
     });
 
+    // Configure Cesium clock for real-time animation of SampledPositionProperty.
+    // The timeline and animation widgets are disabled above, so the clock drives
+    // interpolation only — no visible widget changes result from these settings.
+    viewer.clock.shouldAnimate = true;
+    viewer.clock.clockRange = Cesium.ClockRange.UNBOUNDED;
+    viewer.clock.multiplier = 1.0;
+    viewer.clock.currentTime = Cesium.JulianDate.now();
+
     // Set initial camera to full-Earth view
     viewer.camera.flyTo({
         destination: Cesium.Cartesian3.fromDegrees(0, 0, 35000000),
     });
 
     return viewer;
+}
+
+// ---------------------------------------------------------------------------
+// applySampledTrack (plan 2026-04-17-realtime-animation.md step 2.2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Apply a track_update message to the globe by creating or replacing the
+ * billboard entity's position with a SampledPositionProperty.
+ *
+ * Uses Lagrange degree-5 interpolation for smooth LEO arc rendering.
+ * forwardExtrapolationType and backwardExtrapolationType are set to HOLD so
+ * stale objects hold at their last known position rather than disappearing.
+ *
+ * ECI-to-ECEF conversion is performed per sample at the sample's own epoch
+ * so GMST rotation is correct for each point. Cesium then interpolates in
+ * ECEF space (sub-km error over 60-second intervals — visually negligible).
+ *
+ * @param {Object} viewer - Cesium.Viewer instance.
+ * @param {Object} trackUpdate - Parsed track_update WebSocket message with:
+ *   norad_id (number), epoch_utc (string), samples (Array<{epoch_utc, eci_km}>).
+ * @returns {void}
+ */
+export function applySampledTrack(viewer, trackUpdate) {
+    const noradId = trackUpdate.norad_id;
+    const samples = trackUpdate.samples;
+    if (!samples || samples.length === 0) return;
+
+    // Build SampledPositionProperty with Lagrange degree-5 interpolation.
+    const sampledPosition = new Cesium.SampledPositionProperty();
+    sampledPosition.setInterpolationOptions({
+        interpolationDegree: 5,
+        interpolationAlgorithm: Cesium.LagrangePolynomialApproximation,
+    });
+    sampledPosition.forwardExtrapolationType = Cesium.ExtrapolationType.HOLD;
+    sampledPosition.backwardExtrapolationType = Cesium.ExtrapolationType.HOLD;
+
+    for (const sample of samples) {
+        const julianDate = Cesium.JulianDate.fromIso8601(sample.epoch_utc);
+        const cartesian3 = eciToEcefCartesian3(sample.eci_km, sample.epoch_utc);
+        sampledPosition.addSample(julianDate, cartesian3);
+    }
+
+    if (entityMap.has(noradId)) {
+        // Entity already exists — replace its position with the sampled track.
+        const entity = entityMap.get(noradId);
+        entity.position = sampledPosition;
+    } else {
+        // Entity does not exist yet — create a placeholder billboard.
+        // updateSatellitePosition() will set color and _lastConfidence on
+        // the next state_update message.
+        const entity = viewer.entities.add({
+            id: 'sat-' + noradId,
+            position: sampledPosition,
+            billboard: {
+                image: _createSatelliteDot(),
+                color: Cesium.Color.LIME,
+                scale: 0.6,
+                verticalOrigin: Cesium.VerticalOrigin.CENTER,
+                horizontalOrigin: Cesium.HorizontalOrigin.CENTER,
+            },
+            label: {
+                text: String(noradId),
+                font: '14px monospace',
+                fillColor: Cesium.Color.WHITE,
+                style: Cesium.LabelStyle.FILL,
+                verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+                pixelOffset: new Cesium.Cartesian2(0, -12),
+                show: false,
+            },
+            properties: {
+                norad_id: noradId,
+                _lastConfidence: 0.5,
+            },
+        });
+        entityMap.set(noradId, entity);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -193,7 +278,12 @@ export function updateSatellitePosition(viewer, stateUpdate) {
 
     if (entityMap.has(norad_id)) {
         const entity = entityMap.get(norad_id);
-        entity.position = new Cesium.ConstantPositionProperty(cartesian3);
+        // Only set position if it is NOT a SampledPositionProperty.
+        // If a track_update has already set a SampledPositionProperty, do not
+        // replace it with a ConstantPositionProperty — that would break animation.
+        if (!(entity.position instanceof Cesium.SampledPositionProperty)) {
+            entity.position = new Cesium.ConstantPositionProperty(cartesian3);
+        }
         entity.billboard.color = new Cesium.ConstantProperty(effectiveColor);
         // Store confidence for use by clearConjunctionRisk color restoration.
         entity.properties._lastConfidence = new Cesium.ConstantProperty(confidence);
@@ -274,11 +364,16 @@ function _createSatelliteDot() {
  */
 export function updateUncertaintyEllipsoid(viewer, noradId, covarianceDiagonalKm2, positionEciKm, epochUtcStr) {
     const MIN_RADIUS_M = 5000; // 5 km minimum for globe visibility
+    // Only show ellipsoid when 3-sigma uncertainty exceeds this threshold.
+    // Below this the filter is well-converged and the sphere clutters the view.
+    const VISIBILITY_THRESHOLD_KM = 50;
 
     // 3-sigma radii: sqrt(σ²) * 3, converted km → m
     const radii_m = covarianceDiagonalKm2.map(
         (variance_km2) => Math.max(Math.sqrt(variance_km2) * 3 * 1000, MIN_RADIUS_M)
     );
+    const maxRadius_km = Math.max(...radii_m) / 1000;
+    const shouldShow = maxRadius_km >= VISIBILITY_THRESHOLD_KM;
 
     const cartesian3 = eciToEcefCartesian3(positionEciKm, epochUtcStr);
 
@@ -288,6 +383,7 @@ export function updateUncertaintyEllipsoid(viewer, noradId, covarianceDiagonalKm
         entity.ellipsoid.radii = new Cesium.ConstantProperty(
             new Cesium.Cartesian3(radii_m[0], radii_m[1], radii_m[2])
         );
+        entity.ellipsoid.show = new Cesium.ConstantProperty(shouldShow);
     } else {
         const entity = viewer.entities.add({
             id: 'ell-' + noradId,
@@ -297,8 +393,7 @@ export function updateUncertaintyEllipsoid(viewer, noradId, covarianceDiagonalKm
                 material: Cesium.Color.CYAN.withAlpha(0.15),
                 outline: true,
                 outlineColor: Cesium.Color.CYAN.withAlpha(0.4),
-                // Ellipsoid is not selectable — only the billboard entity is
-                show: true,
+                show: shouldShow,
             },
         });
         ellipsoidMap.set(noradId, entity);

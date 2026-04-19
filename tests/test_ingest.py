@@ -9,6 +9,7 @@ Covers F-001 through F-006:
 Network-dependent functions (authenticate, fetch_tles, poll_once) are not
 tested here; they require integration test infrastructure and live credentials.
 """
+
 import datetime
 import json
 import os
@@ -67,12 +68,13 @@ def _utc(
     second: int = 0,
 ) -> datetime.datetime:
     """Convenience factory for UTC-aware datetimes."""
-    return datetime.datetime(year, month, day, hour, minute, second, tzinfo=datetime.timezone.utc)
+    return datetime.datetime(year, month, day, hour, minute, second, tzinfo=datetime.UTC)
 
 
 # ---------------------------------------------------------------------------
 # validate_tle — F-003
 # ---------------------------------------------------------------------------
+
 
 def test_validate_tle_accepts_valid_tle() -> None:
     """validate_tle returns True for a correctly checksummed TLE."""
@@ -115,12 +117,11 @@ def test_validate_tle_rejects_empty_strings() -> None:
 # init_catalog_db — F-004
 # ---------------------------------------------------------------------------
 
+
 def test_init_catalog_db_creates_table() -> None:
     """init_catalog_db creates the tle_catalog table if it does not exist."""
     db = _make_db()
-    cursor = db.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='tle_catalog'"
-    )
+    cursor = db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='tle_catalog'")
     assert cursor.fetchone() is not None, "tle_catalog table should exist"
     db.close()
 
@@ -154,6 +155,7 @@ def test_init_catalog_db_returns_connection() -> None:
 # ---------------------------------------------------------------------------
 # cache_tles — F-004
 # ---------------------------------------------------------------------------
+
 
 def _sample_tle_list() -> list[dict]:
     return [
@@ -236,6 +238,7 @@ def test_cache_tles_stores_iso8601_fetched_at() -> None:
 # ---------------------------------------------------------------------------
 # get_cached_tles — F-004
 # ---------------------------------------------------------------------------
+
 
 def _populate_db_with_two_epochs(db: sqlite3.Connection) -> None:
     """Insert ISS TLEs at two different epochs for filter tests."""
@@ -321,6 +324,7 @@ def test_get_cached_tles_dict_keys() -> None:
 # get_latest_tle — F-004
 # ---------------------------------------------------------------------------
 
+
 def test_get_latest_tle_returns_most_recent() -> None:
     """get_latest_tle returns the TLE with the newest epoch_utc."""
     db = _make_db()
@@ -352,6 +356,7 @@ def test_get_latest_tle_returns_single_entry() -> None:
 # ---------------------------------------------------------------------------
 # load_catalog_config — F-005
 # ---------------------------------------------------------------------------
+
 
 def _write_json_config(tmpdir: str, data: object) -> str:
     """Write a JSON object to a temp file and return the path."""
@@ -443,6 +448,7 @@ def test_load_catalog_config_raises_file_not_found() -> None:
 # ---------------------------------------------------------------------------
 # _parse_tle_epoch_utc — internal, tested because it is domain-critical
 # ---------------------------------------------------------------------------
+
 
 def test_parse_tle_epoch_utc_known_value() -> None:
     """_parse_tle_epoch_utc correctly decodes a known TLE epoch."""

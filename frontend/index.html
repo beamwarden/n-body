@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ne-body (Near Earth body) SSA Platform</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
 
     <!-- CesiumJS 1.114 from CDN -->
     <link rel="stylesheet" href="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Widgets/widgets.css" />
@@ -168,6 +169,36 @@
         #object-info-panel .info-label {
             color: #666;
         }
+        #object-info-panel a.norad-link:link    { color: #888; text-decoration: none; }
+        #object-info-panel a.norad-link:visited { color: #666; text-decoration: none; }
+        #object-info-panel a.norad-link:hover   { color: #bbb; text-decoration: underline; }
+
+        /* SGP4 delta callout — prominent when filter diverges */
+        .info-delta {
+            margin-top: 6px;
+            padding: 5px 8px;
+            border-radius: 3px;
+            font-size: 20px;
+            font-weight: bold;
+            letter-spacing: 0.04em;
+            text-align: center;
+        }
+        .info-delta.delta-ok     { background: #0d1f0d; color: #66ff66; border: 1px solid #1a4a1a; }
+        .info-delta.delta-warn   { background: #1f1500; color: #ffaa00; border: 1px solid #4a3500; }
+        .info-delta.delta-alert  { background: #1f0000; color: #ff4444; border: 1px solid #4a0000; }
+        .info-delta-label {
+            font-size: 10px;
+            font-weight: normal;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            opacity: 0.7;
+            display: block;
+            margin-bottom: 1px;
+        }
+        .info-tle-age { font-size: 11px; }
+        .info-tle-age.age-ok   { color: #66ff66; }
+        .info-tle-age.age-warn { color: #ffaa00; }
+        .info-tle-age.age-old  { color: #ff4444; }
 
         /* Anomaly history section within #object-info-panel (plan step 1.2) */
         .anomaly-history-section {
@@ -212,6 +243,9 @@
             margin-top: 5px;
             padding-top: 4px;
         }
+        .conjunction-section.conjunction-safe {
+            border-top-color: #1a3a1a;
+        }
         .conjunction-header {
             font-size: 11px;
             font-weight: bold;
@@ -219,6 +253,9 @@
             text-transform: uppercase;
             letter-spacing: 0.04em;
             margin-bottom: 3px;
+        }
+        .conjunction-safe .conjunction-header {
+            color: #66ff66;
         }
         .conjunction-entry {
             font-size: 11px;
@@ -296,6 +333,21 @@
             color: #aaa;
         }
 
+        /* History nav link — header right side, before mute button */
+        #history-nav-link {
+            float: right;
+            color: #aaa;
+            font-family: monospace;
+            font-size: 14px;
+            text-decoration: none;
+            padding: 3px 10px;
+            border: 1px solid #444;
+            border-radius: 3px;
+            margin-top: 2px;
+            margin-right: 8px;
+        }
+        #history-nav-link:hover { color: #fff; border-color: #666; }
+
         /* Mute toggle button — top-right of header */
         #mute-toggle {
             float: right;
@@ -359,6 +411,7 @@
 <body>
     <div id="header">
         <button id="mute-toggle">&#x1F514; UNMUTE</button>
+        <a href="history.html" id="history-nav-link">HISTORY</a>
         <span id="tracked-count" class="tracked-count">0 TRACKED</span>
         <span id="ws-status" class="ws-status ws-live">LIVE</span>
         ne-body SSA Platform — Continuous Monitoring &amp; Prediction
@@ -384,7 +437,7 @@
     </div>
 
     <!-- Application JS modules (ES2022, loaded as modules) -->
-    <script type="module" src="src/main.js?v=5"></script>
+    <script type="module" src="src/main.js?v=17"></script>
     <noscript>
         <div style="position:fixed;top:0;left:0;width:100%;padding:20px;background:#300;color:#fff;font-size:18px;text-align:center;z-index:9999;">
             JavaScript is required to run the ne-body SSA Platform.

@@ -14,9 +14,9 @@ in ECI J2000, as produced by kalman.py.
 Units: km for position residuals, km/s for velocity residuals, seconds for
 duration values.
 """
+
 import datetime
 import sqlite3
-from typing import Optional
 
 import numpy as np
 from numpy.typing import NDArray
@@ -151,7 +151,7 @@ def classify_anomaly(
     innovation_eci_km: list[float],
     is_active_satellite: bool,
     threshold: float = CHI2_THRESHOLD_6DOF,
-) -> Optional[str]:
+) -> str | None:
     """Classify the type of detected anomaly based on NIS pattern and innovation.
 
     Classification rules (per F-031, F-032), applied in priority order — first
@@ -204,9 +204,7 @@ def classify_anomaly(
     # TECH DEBT (post-POC): replace with proper RSW frame decomposition using
     # the object's actual velocity vector (not the velocity residual) to define
     # the along-track unit vector.
-    innovation_arr: NDArray[np.float64] = np.asarray(
-        innovation_eci_km, dtype=np.float64
-    )
+    innovation_arr: NDArray[np.float64] = np.asarray(innovation_eci_km, dtype=np.float64)
     pos_residual_km: NDArray[np.float64] = innovation_arr[0:3]
     vel_direction: NDArray[np.float64] = innovation_arr[3:6]
     vel_norm: float = float(np.linalg.norm(vel_direction))
@@ -214,9 +212,7 @@ def classify_anomaly(
     if vel_norm >= 1e-10:
         vel_unit: NDArray[np.float64] = vel_direction / vel_norm
         along_track_km: float = abs(float(np.dot(pos_residual_km, vel_unit)))
-        cross_track_km: float = float(
-            np.linalg.norm(pos_residual_km - np.dot(pos_residual_km, vel_unit) * vel_unit)
-        )
+        cross_track_km: float = float(np.linalg.norm(pos_residual_km - np.dot(pos_residual_km, vel_unit) * vel_unit))
         if along_track_km > 3.0 * cross_track_km and cross_track_km < 1.0:
             return ANOMALY_DRAG
 
@@ -258,9 +254,7 @@ def trigger_recalibration(
 
     valid_types = {ANOMALY_MANEUVER, ANOMALY_DRAG, ANOMALY_DIVERGENCE}
     if anomaly_type not in valid_types:
-        raise ValueError(
-            f"anomaly_type must be one of {valid_types}, got {anomaly_type!r}"
-        )
+        raise ValueError(f"anomaly_type must be one of {valid_types}, got {anomaly_type!r}")
 
     if anomaly_type == ANOMALY_MANEUVER:
         inflation_factor: float = 20.0
@@ -371,9 +365,7 @@ def record_recalibration_complete(
     # datetime.fromisoformat() in Python 3.11+ handles the '+00:00' suffix.
     detection_epoch_utc: datetime.datetime = datetime.datetime.fromisoformat(row[0])
 
-    recalibration_duration_s: float = (
-        resolution_epoch_utc - detection_epoch_utc
-    ).total_seconds()
+    recalibration_duration_s: float = (resolution_epoch_utc - detection_epoch_utc).total_seconds()
 
     cursor.execute(
         """
@@ -415,9 +407,7 @@ def update_anomaly_type(
     """
     valid_types = {ANOMALY_MANEUVER, ANOMALY_DRAG, ANOMALY_DIVERGENCE}
     if new_anomaly_type not in valid_types:
-        raise ValueError(
-            f"new_anomaly_type must be one of {valid_types}, got {new_anomaly_type!r}"
-        )
+        raise ValueError(f"new_anomaly_type must be one of {valid_types}, got {new_anomaly_type!r}")
 
     cursor = db.cursor()
     cursor.execute(
@@ -452,7 +442,7 @@ def get_active_anomalies(db: sqlite3.Connection) -> list[dict]:
         """
         SELECT id, norad_id, detection_epoch_utc, anomaly_type, nis_value, status
         FROM alerts
-        WHERE status != 'resolved'
+        WHERE status NOT IN ('resolved', 'dismissed')
         ORDER BY id ASC
         """
     )
@@ -471,3 +461,35 @@ def get_active_anomalies(db: sqlite3.Connection) -> list[dict]:
             }
         )
     return results
+
+
+def dismiss_alert(
+    db: sqlite3.Connection,
+    norad_id: int,
+    detection_epoch_utc: str,
+) -> bool:
+    """Mark an alert as dismissed so it is excluded from future active queries.
+
+    Looks up the alert by (norad_id, detection_epoch_utc) and sets its status
+    to 'dismissed'. Dismissed alerts are never re-shown on page reload.
+
+    Args:
+        db: Open SQLite connection.
+        norad_id: NORAD catalog ID of the alerted object.
+        detection_epoch_utc: ISO-8601 UTC string matching detection_epoch_utc
+            in the alerts table (e.g. '2026-04-15T12:34:56Z').
+
+    Returns:
+        True if a row was updated, False if no matching alert was found.
+    """
+    cursor = db.execute(
+        """
+        UPDATE alerts
+        SET status = 'dismissed'
+        WHERE norad_id = ? AND detection_epoch_utc = ?
+          AND status NOT IN ('resolved', 'dismissed')
+        """,
+        (norad_id, detection_epoch_utc),
+    )
+    db.commit()
+    return cursor.rowcount > 0

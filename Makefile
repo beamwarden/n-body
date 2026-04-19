@@ -1,4 +1,4 @@
-.PHONY: backend frontend dev replay verify demo test
+.PHONY: backend frontend dev replay verify demo test lint fmt
 
 # Start the backend API server (port 8000)
 backend:
@@ -23,6 +23,10 @@ replay:
 verify:
 	python scripts/verify_catalog_altitudes.py
 
+# Validate catalog NORAD IDs and names against Space-Track satcat
+verify-ids:
+	python scripts/verify_catalog_ids.py
+
 # Run demo sequence. Pass args with: make demo ARGS="--act 3"
 demo:
 	python scripts/demo.py --act all $(ARGS)
@@ -39,9 +43,28 @@ process:
 reload-catalog:
 	curl -X POST http://localhost:8001/admin/reload-catalog
 
-# Run tests
+# Run unit tests (mirrors ci-develop gate)
 test:
-	pytest tests/ -v
+	uv run pytest -m unit -v --tb=short
+
+# Run all tests including integration (requires running backend)
+test-all:
+	uv run pytest tests/ -v
+
+# Lint + format check + type check (mirrors ci-main build gate)
+build:
+	uv run ruff check backend/ tests/
+	uv run ruff format --check backend/ tests/
+	uv run python -m py_compile backend/main.py backend/processing.py backend/anomaly.py backend/kalman.py backend/propagator.py backend/conjunction.py backend/ingest.py
+	uv run mypy backend/ --ignore-missing-imports
+
+# Lint with ruff
+lint:
+	uv run ruff check backend/ tests/
+
+# Format with ruff (in-place)
+fmt:
+	uv run ruff format backend/ tests/
 
 # Kill anything holding port 8000
 kill-backend:

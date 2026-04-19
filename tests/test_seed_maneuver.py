@@ -3,13 +3,11 @@
 Covers RSW-to-ECI conversion, ECI-to-Keplerian conversion, and
 Keplerian-to-TLE-lines formatting and validation.
 """
+
 import datetime
 import math
-import sqlite3
 import sys
 from pathlib import Path
-import tempfile
-import os
 
 import numpy as np
 import pytest
@@ -20,13 +18,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import backend.ingest as ingest
 from scripts.seed_maneuver import (
     _true_to_mean_anomaly_rad,
-    _tle_checksum,
-    _format_tle_epoch,
     eci_to_keplerian,
     keplerian_to_tle_lines,
     rsw_to_eci_delta_v_km_s,
 )
-
 
 # ---------------------------------------------------------------------------
 # Shared test fixtures: ISS-like circular LEO orbit
@@ -70,8 +65,8 @@ def _iss_inclined_state() -> tuple[np.ndarray, np.ndarray]:
 # Tests: rsw_to_eci_delta_v_km_s
 # ---------------------------------------------------------------------------
 
-class TestRswToEciDeltaV:
 
+class TestRswToEciDeltaV:
     def test_along_track_aligns_with_velocity_for_circular_orbit(self) -> None:
         """For a circular equatorial orbit, along-track delta-V should be
         parallel to the velocity vector."""
@@ -100,21 +95,21 @@ class TestRswToEciDeltaV:
         dv_mag = 0.001
 
         dv_along = rsw_to_eci_delta_v_km_s(
-            pos, vel,
+            pos,
+            vel,
             delta_v_radial_km_s=0.0,
             delta_v_along_track_km_s=dv_mag,
             delta_v_cross_track_km_s=0.0,
         )
         dv_radial = rsw_to_eci_delta_v_km_s(
-            pos, vel,
+            pos,
+            vel,
             delta_v_radial_km_s=dv_mag,
             delta_v_along_track_km_s=0.0,
             delta_v_cross_track_km_s=0.0,
         )
         dot_product = float(np.dot(dv_along, dv_radial))
-        assert abs(dot_product) < 1e-12, (
-            f"Along-track and radial delta-V should be orthogonal, dot={dot_product}"
-        )
+        assert abs(dot_product) < 1e-12, f"Along-track and radial delta-V should be orthogonal, dot={dot_product}"
 
     def test_cross_track_perpendicular_to_orbital_plane(self) -> None:
         """Cross-track delta-V should be perpendicular to the orbital plane (ECI)."""
@@ -122,7 +117,8 @@ class TestRswToEciDeltaV:
         dv_mag = 0.001
 
         dv_cross = rsw_to_eci_delta_v_km_s(
-            pos, vel,
+            pos,
+            vel,
             delta_v_radial_km_s=0.0,
             delta_v_along_track_km_s=0.0,
             delta_v_cross_track_km_s=dv_mag,
@@ -150,8 +146,11 @@ class TestRswToEciDeltaV:
         """Zero position vector should raise ValueError."""
         with pytest.raises(ValueError, match="zero vector"):
             rsw_to_eci_delta_v_km_s(
-                np.zeros(3), np.array([0.0, 7.67, 0.0]),
-                0.0, 0.001, 0.0,
+                np.zeros(3),
+                np.array([0.0, 7.67, 0.0]),
+                0.0,
+                0.001,
+                0.0,
             )
 
 
@@ -159,8 +158,8 @@ class TestRswToEciDeltaV:
 # Tests: eci_to_keplerian
 # ---------------------------------------------------------------------------
 
-class TestEciToKeplerian:
 
+class TestEciToKeplerian:
     def test_circular_equatorial_orbit(self) -> None:
         """ISS-like circular equatorial orbit should give expected elements."""
         pos, vel = _iss_like_state()
@@ -212,8 +211,8 @@ class TestEciToKeplerian:
 # Tests: _true_to_mean_anomaly_rad
 # ---------------------------------------------------------------------------
 
-class TestTrueToMeanAnomaly:
 
+class TestTrueToMeanAnomaly:
     def test_zero_anomaly(self) -> None:
         """True anomaly = 0 should give mean anomaly = 0."""
         M = _true_to_mean_anomaly_rad(0.0, 0.0)
@@ -243,10 +242,10 @@ class TestTrueToMeanAnomaly:
 # Tests: keplerian_to_tle_lines
 # ---------------------------------------------------------------------------
 
-class TestKeplerianToTleLines:
 
+class TestKeplerianToTleLines:
     def _make_iss_epoch(self) -> datetime.datetime:
-        return datetime.datetime(2026, 3, 28, 12, 0, 0, tzinfo=datetime.timezone.utc)
+        return datetime.datetime(2026, 3, 28, 12, 0, 0, tzinfo=datetime.UTC)
 
     def test_returns_two_strings(self) -> None:
         epoch = self._make_iss_epoch()
@@ -278,17 +277,19 @@ class TestKeplerianToTleLines:
             mean_anomaly_rad=math.radians(286.6011),
             bstar=4.0768e-5,
         )
-        assert ingest.validate_tle(line1, line2), (
-            f"Generated TLE failed checksum validation:\n{line1!r}\n{line2!r}"
-        )
+        assert ingest.validate_tle(line1, line2), f"Generated TLE failed checksum validation:\n{line1!r}\n{line2!r}"
 
     def test_tle_line1_starts_with_1(self) -> None:
         epoch = self._make_iss_epoch()
         line1, line2 = keplerian_to_tle_lines(
-            norad_id=25544, epoch_utc=epoch,
-            a_km=_ISS_RADIUS_KM, e=0.0006703,
-            i_rad=math.radians(51.64), raan_rad=0.0,
-            argp_rad=0.0, mean_anomaly_rad=0.0,
+            norad_id=25544,
+            epoch_utc=epoch,
+            a_km=_ISS_RADIUS_KM,
+            e=0.0006703,
+            i_rad=math.radians(51.64),
+            raan_rad=0.0,
+            argp_rad=0.0,
+            mean_anomaly_rad=0.0,
             bstar=4.0768e-5,
         )
         assert line1[0] == "1"
@@ -297,10 +298,14 @@ class TestKeplerianToTleLines:
     def test_norad_id_encoded_in_lines(self) -> None:
         epoch = self._make_iss_epoch()
         line1, line2 = keplerian_to_tle_lines(
-            norad_id=25544, epoch_utc=epoch,
-            a_km=_ISS_RADIUS_KM, e=0.0006703,
-            i_rad=math.radians(51.64), raan_rad=0.0,
-            argp_rad=0.0, mean_anomaly_rad=0.0,
+            norad_id=25544,
+            epoch_utc=epoch,
+            a_km=_ISS_RADIUS_KM,
+            e=0.0006703,
+            i_rad=math.radians(51.64),
+            raan_rad=0.0,
+            argp_rad=0.0,
+            mean_anomaly_rad=0.0,
             bstar=4.0768e-5,
         )
         assert "25544" in line1
@@ -311,22 +316,31 @@ class TestKeplerianToTleLines:
         naive_epoch = datetime.datetime(2026, 3, 28, 12, 0, 0)
         with pytest.raises(ValueError, match="UTC-aware"):
             keplerian_to_tle_lines(
-                norad_id=25544, epoch_utc=naive_epoch,
-                a_km=_ISS_RADIUS_KM, e=0.0006703,
-                i_rad=math.radians(51.64), raan_rad=0.0,
-                argp_rad=0.0, mean_anomaly_rad=0.0,
+                norad_id=25544,
+                epoch_utc=naive_epoch,
+                a_km=_ISS_RADIUS_KM,
+                e=0.0006703,
+                i_rad=math.radians(51.64),
+                raan_rad=0.0,
+                argp_rad=0.0,
+                mean_anomaly_rad=0.0,
                 bstar=4.0768e-5,
             )
 
     def test_can_be_parsed_by_sgp4(self) -> None:
         """Generated TLE should be parseable by the sgp4 library."""
-        from sgp4.api import Satrec, WGS72
+        from sgp4.api import WGS72, Satrec
+
         epoch = self._make_iss_epoch()
         line1, line2 = keplerian_to_tle_lines(
-            norad_id=25544, epoch_utc=epoch,
-            a_km=_ISS_RADIUS_KM, e=0.0006703,
-            i_rad=math.radians(51.6431), raan_rad=math.radians(117.2927),
-            argp_rad=math.radians(73.5764), mean_anomaly_rad=math.radians(286.6011),
+            norad_id=25544,
+            epoch_utc=epoch,
+            a_km=_ISS_RADIUS_KM,
+            e=0.0006703,
+            i_rad=math.radians(51.6431),
+            raan_rad=math.radians(117.2927),
+            argp_rad=math.radians(73.5764),
+            mean_anomaly_rad=math.radians(286.6011),
             bstar=4.0768e-5,
         )
         satrec = Satrec.twoline2rv(line1, line2, WGS72)
@@ -337,8 +351,8 @@ class TestKeplerianToTleLines:
 # Tests: round-trip (generate TLE, propagate back, check position error)
 # ---------------------------------------------------------------------------
 
-class TestRoundTrip:
 
+class TestRoundTrip:
     def test_tle_valid_and_sgp4_parseable(self) -> None:
         """Round-trip: generate TLE from ECI state, verify it passes validation
         and can be initialized by SGP4.
@@ -357,32 +371,32 @@ class TestRoundTrip:
         which is the actual functional requirement.
         Flagged for planner review.
         """
-        import backend.propagator as propagator
-        from sgp4.api import Satrec, WGS72, jday
+        from sgp4.api import WGS72, Satrec, jday
 
         # Use an inclined ISS-like state
         pos, vel = _iss_inclined_state()
-        epoch = datetime.datetime(2026, 3, 28, 12, 0, 0, tzinfo=datetime.timezone.utc)
+        epoch = datetime.datetime(2026, 3, 28, 12, 0, 0, tzinfo=datetime.UTC)
 
         elements = eci_to_keplerian(pos, vel)
 
         import scripts.seed_maneuver as sm
-        mean_anomaly_rad = sm._true_to_mean_anomaly_rad(
-            elements["true_anomaly_rad"], elements["e"]
-        )
+
+        mean_anomaly_rad = sm._true_to_mean_anomaly_rad(elements["true_anomaly_rad"], elements["e"])
 
         line1, line2 = keplerian_to_tle_lines(
-            norad_id=99999, epoch_utc=epoch,
-            a_km=elements["a_km"], e=elements["e"],
-            i_rad=elements["i_rad"], raan_rad=elements["raan_rad"],
-            argp_rad=elements["argp_rad"], mean_anomaly_rad=mean_anomaly_rad,
+            norad_id=99999,
+            epoch_utc=epoch,
+            a_km=elements["a_km"],
+            e=elements["e"],
+            i_rad=elements["i_rad"],
+            raan_rad=elements["raan_rad"],
+            argp_rad=elements["argp_rad"],
+            mean_anomaly_rad=mean_anomaly_rad,
             bstar=0.0,
         )
 
         # Validate checksum — this is the primary functional requirement.
-        assert ingest.validate_tle(line1, line2), (
-            f"Generated TLE failed checksum:\n{line1!r}\n{line2!r}"
-        )
+        assert ingest.validate_tle(line1, line2), f"Generated TLE failed checksum:\n{line1!r}\n{line2!r}"
 
         # Verify SGP4 can initialize from these elements without error.
         satrec = Satrec.twoline2rv(line1, line2, WGS72)
@@ -390,14 +404,16 @@ class TestRoundTrip:
 
         # Verify SGP4 can propagate at the epoch without error.
         jd_whole, jd_frac = jday(
-            epoch.year, epoch.month, epoch.day,
-            epoch.hour, epoch.minute, epoch.second,
+            epoch.year,
+            epoch.month,
+            epoch.day,
+            epoch.hour,
+            epoch.minute,
+            epoch.second,
         )
         error_code, pos_teme, vel_teme = satrec.sgp4(jd_whole, jd_frac)
         assert error_code == 0, f"SGP4 propagation error code: {error_code}"
 
         # Sanity-check: propagated position should be in LEO range (6000-8000 km).
         r_prop = float(np.linalg.norm(np.array(pos_teme)))
-        assert 6000.0 < r_prop < 8000.0, (
-            f"Propagated position magnitude {r_prop:.1f} km out of LEO range"
-        )
+        assert 6000.0 < r_prop < 8000.0, f"Propagated position magnitude {r_prop:.1f} km out of LEO range"

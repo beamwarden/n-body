@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" fill="#0a0a0a" rx="4"/>
+  <!-- Outer ellipsoid shell -->
+  <ellipse cx="16" cy="16" rx="13" ry="8.5" fill="none" stroke="#00e5ff" stroke-width="1.5" opacity="0.85"/>
+  <!-- Polar ring (vertical cross-section) -->
+  <ellipse cx="16" cy="16" rx="4.5" ry="8.5" fill="none" stroke="#00e5ff" stroke-width="0.9" opacity="0.45"/>
+  <!-- Equatorial line -->
+  <line x1="3" y1="16" x2="29" y2="16" stroke="#00e5ff" stroke-width="0.9" opacity="0.45"/>
+  <!-- Satellite dot -->
+  <circle cx="16" cy="16" r="2.2" fill="#00e5ff" opacity="1"/>
+</svg>

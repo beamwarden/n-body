@@ -122,9 +122,11 @@ export function seedFromCatalog(panelState, catalog) {
  * @param {Object} anomalyEvent - Anomaly message from backend WebSocket.
  * @param {Map<number, string>} [nameMapOverride] - Optional name map from main.js.
  * @param {function(number): void|null} [onClickCallback] - Optional callback for card clicks.
+ * @param {function(number, string): void|null} [onDismissCallback] - Optional callback fired on
+ *     dismiss with (norad_id, epoch_utc). Used to persist dismissal to the backend.
  * @returns {void}
  */
-export function addAlert(panelState, anomalyEvent, nameMapOverride, onClickCallback = null) {
+export function addAlert(panelState, anomalyEvent, nameMapOverride, onClickCallback = null, onDismissCallback = null) {
     if (!panelState) return;
 
     const { norad_id, epoch_utc, anomaly_type, nis, innovation_eci_km } = anomalyEvent;
@@ -200,6 +202,7 @@ export function addAlert(panelState, anomalyEvent, nameMapOverride, onClickCallb
         e.stopPropagation();
         if (alertEl.parentNode) alertEl.parentNode.removeChild(alertEl);
         panelState.alerts.delete(key);
+        if (onDismissCallback) onDismissCallback(norad_id, epoch_utc);
     });
     alertEl.appendChild(dismissBtn);
 
@@ -393,9 +396,10 @@ export function updateAlertConjunctions(panelState, noradId, conjunctionMessage)
     const secondOrder = conjunctionMessage.second_order || [];
 
     if (firstOrder.length === 0 && secondOrder.length === 0) {
+        section.classList.add('conjunction-safe');
         const noRisk = document.createElement('div');
         noRisk.className = 'conjunction-entry';
-        noRisk.style.color = '#666';
+        noRisk.style.color = '#66ff66';
         noRisk.textContent = 'No conjunctions within 5 km / 10 km in next 90 min';
         section.appendChild(noRisk);
     } else {
