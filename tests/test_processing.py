@@ -138,6 +138,7 @@ def test_process_single_object_cold_start() -> None:
     tle_record = _make_tle_record(25544, "2026-03-28T12:00:00Z")
 
     messages = process_single_object(
+        generate_tracks=False,
         db=db,
         entry=entry,
         norad_id=25544,
@@ -163,6 +164,7 @@ def test_process_single_object_cold_start_initializes_filter() -> None:
     tle_record = _make_tle_record(25544, "2026-03-28T12:00:00Z")
 
     process_single_object(
+        generate_tracks=False,
         db=db, entry=entry, norad_id=25544, filter_states=filter_states,
         tle_record=tle_record,
     )
@@ -183,6 +185,7 @@ def test_process_single_object_warm_path() -> None:
 
     # Cold start
     process_single_object(
+        generate_tracks=False,
         db=db, entry=entry, norad_id=25544, filter_states=filter_states,
         tle_record=tle_record1,
     )
@@ -190,6 +193,7 @@ def test_process_single_object_warm_path() -> None:
 
     # Warm update
     messages = process_single_object(
+        generate_tracks=False,
         db=db, entry=entry, norad_id=25544, filter_states=filter_states,
         tle_record=tle_record2,
     )
@@ -211,12 +215,14 @@ def test_process_single_object_duplicate_epoch_skipped() -> None:
 
     # Cold start
     process_single_object(
+        generate_tracks=False,
         db=db, entry=entry, norad_id=25544, filter_states=filter_states,
         tle_record=tle_record,
     )
 
     # Same epoch again — should be skipped
     messages = process_single_object(
+        generate_tracks=False,
         db=db, entry=entry, norad_id=25544, filter_states=filter_states,
         tle_record=tle_record,
     )
@@ -231,6 +237,7 @@ def test_process_single_object_state_history_written() -> None:
     tle_record = _make_tle_record(25544, "2026-03-28T12:00:00Z")
 
     process_single_object(
+        generate_tracks=False,
         db=db, entry=entry, norad_id=25544, filter_states=filter_states,
         tle_record=tle_record,
     )
@@ -253,6 +260,7 @@ def test_process_single_object_debris_class() -> None:
     tle_record = _make_tle_record(25544, "2026-03-28T12:00:00Z")
 
     messages = process_single_object(
+        generate_tracks=False,
         db=db, entry=entry, norad_id=25544, filter_states=filter_states,
         tle_record=tle_record,
     )
@@ -290,6 +298,7 @@ def test_active_satellite_anomaly_defers_recalibration() -> None:
 
     # Cold start
     process_single_object(
+        generate_tracks=False,
         db=db, entry=entry, norad_id=25544, filter_states=filter_states,
         tle_record=_make_tle_record(25544, "2026-03-28T12:00:00Z"),
     )
@@ -297,6 +306,7 @@ def test_active_satellite_anomaly_defers_recalibration() -> None:
     # Force a high NIS on the next cycle by patching classify_anomaly.
     with patch("backend.processing.anomaly.classify_anomaly", return_value=anomaly.ANOMALY_DIVERGENCE):
         messages = process_single_object(
+        generate_tracks=False,
             db=db, entry=entry, norad_id=25544, filter_states=filter_states,
             tle_record=_make_tle_record(25544, "2026-03-28T12:30:00Z"),
         )
@@ -321,6 +331,7 @@ def test_active_satellite_two_consecutive_exceedances_classified_as_maneuver() -
 
     # Cold start
     process_single_object(
+        generate_tracks=False,
         db=db, entry=entry, norad_id=25544, filter_states=filter_states,
         tle_record=_make_tle_record(25544, "2026-03-28T12:00:00Z"),
     )
@@ -339,6 +350,7 @@ def test_active_satellite_two_consecutive_exceedances_classified_as_maneuver() -
     # Cycle 2: classify_anomaly returns MANEUVER (2 consecutive exceedances).
     with patch("backend.processing.anomaly.classify_anomaly", return_value=anomaly.ANOMALY_MANEUVER):
         messages = process_single_object(
+        generate_tracks=False,
             db=db, entry=entry, norad_id=25544, filter_states=filter_states,
             tle_record=_make_tle_record(25544, "2026-03-28T13:00:00Z"),
         )
@@ -366,12 +378,14 @@ def test_non_active_satellite_recalibrates_immediately() -> None:
 
     # Cold start
     process_single_object(
+        generate_tracks=False,
         db=db, entry=entry, norad_id=25544, filter_states=filter_states,
         tle_record=_make_tle_record(25544, "2026-03-28T12:00:00Z"),
     )
 
     with patch("backend.processing.anomaly.classify_anomaly", return_value=anomaly.ANOMALY_DIVERGENCE):
         messages = process_single_object(
+        generate_tracks=False,
             db=db, entry=entry, norad_id=25544, filter_states=filter_states,
             tle_record=_make_tle_record(25544, "2026-03-28T12:30:00Z"),
         )
@@ -394,6 +408,7 @@ def test_pending_anomaly_timeout_resolves_as_provisional_type() -> None:
 
     # Cold start
     process_single_object(
+        generate_tracks=False,
         db=db, entry=entry, norad_id=25544, filter_states=filter_states,
         tle_record=_make_tle_record(25544, "2026-03-28T12:00:00Z"),
     )
@@ -413,6 +428,7 @@ def test_pending_anomaly_timeout_resolves_as_provisional_type() -> None:
     # Cycle 2 epoch is after the timeout.
     with patch("backend.processing.anomaly.classify_anomaly", return_value=None):
         messages = process_single_object(
+        generate_tracks=False,
             db=db, entry=entry, norad_id=25544, filter_states=filter_states,
             tle_record=_make_tle_record(25544, "2026-03-28T15:00:00Z"),
         )
@@ -459,6 +475,7 @@ def _setup_warm_filter(
     entry = _make_catalog_entry(norad_id, object_class=object_class)
     filter_states: dict = {}
     process_single_object(
+        generate_tracks=False,
         db=db, entry=entry, norad_id=norad_id, filter_states=filter_states,
         tle_record=_make_tle_record(norad_id, "2026-03-28T12:00:00Z"),
     )
@@ -479,6 +496,7 @@ def test_maneuver_requires_two_consecutive_exceedances() -> None:
     # --- Single exceedance: must NOT produce maneuver ---
     with patch("backend.processing.anomaly.classify_anomaly", return_value=anomaly.ANOMALY_DIVERGENCE):
         msgs_cycle1 = process_single_object(
+        generate_tracks=False,
             db=db, entry=entry, norad_id=25544, filter_states=filter_states,
             tle_record=_make_tle_record(25544, "2026-03-28T12:30:00Z"),
         )
@@ -499,6 +517,7 @@ def test_maneuver_requires_two_consecutive_exceedances() -> None:
     # --- Second consecutive exceedance: must produce maneuver ---
     with patch("backend.processing.anomaly.classify_anomaly", return_value=anomaly.ANOMALY_MANEUVER):
         msgs_cycle2 = process_single_object(
+        generate_tracks=False,
             db=db, entry=entry, norad_id=25544, filter_states=filter_states,
             tle_record=_make_tle_record(25544, "2026-03-28T13:00:00Z"),
         )
@@ -522,6 +541,7 @@ def test_single_exceedance_active_satellite_stays_divergence() -> None:
     # Cycle 1: NIS exceedance — provisional filter_divergence, no recal yet.
     with patch("backend.processing.anomaly.classify_anomaly", return_value=anomaly.ANOMALY_DIVERGENCE):
         process_single_object(
+        generate_tracks=False,
             db=db, entry=entry, norad_id=25544, filter_states=filter_states,
             tle_record=_make_tle_record(25544, "2026-03-28T12:30:00Z"),
         )
@@ -535,6 +555,7 @@ def test_single_exceedance_active_satellite_stays_divergence() -> None:
     # Cycle 2: NIS back to normal (classify_anomaly returns None — chain broken).
     with patch("backend.processing.anomaly.classify_anomaly", return_value=None):
         msgs_cycle2 = process_single_object(
+        generate_tracks=False,
             db=db, entry=entry, norad_id=25544, filter_states=filter_states,
             tle_record=_make_tle_record(25544, "2026-03-28T13:00:00Z"),
         )
@@ -574,6 +595,7 @@ def test_restart_no_duplicate_alerts() -> None:
 
     # Cycle 1 — cold start.
     process_single_object(
+        generate_tracks=False,
         db=db, entry=entry, norad_id=25544, filter_states=filter_states,
         tle_record=tle_record1,
     )
@@ -581,6 +603,7 @@ def test_restart_no_duplicate_alerts() -> None:
     # Cycle 2 — force NIS exceedance so an alert row is written.
     with patch("backend.processing.anomaly.classify_anomaly", return_value=anomaly.ANOMALY_DIVERGENCE):
         process_single_object(
+        generate_tracks=False,
             db=db, entry=entry, norad_id=25544, filter_states=filter_states,
             tle_record=tle_record2,
         )
@@ -594,6 +617,7 @@ def test_restart_no_duplicate_alerts() -> None:
 
     # Re-run cycle 1 (cold start again).
     process_single_object(
+        generate_tracks=False,
         db=db, entry=entry, norad_id=25544, filter_states=filter_states,
         tle_record=tle_record1,
     )
@@ -601,6 +625,7 @@ def test_restart_no_duplicate_alerts() -> None:
     # Re-run cycle 2 with the same anomaly-triggering TLE/epoch.
     with patch("backend.processing.anomaly.classify_anomaly", return_value=anomaly.ANOMALY_DIVERGENCE):
         process_single_object(
+        generate_tracks=False,
             db=db, entry=entry, norad_id=25544, filter_states=filter_states,
             tle_record=tle_record2,
         )
