@@ -11,7 +11,6 @@ not used in this POC. Reviewers should note that measurement noise R reflects
 TLE accuracy class rather than actual sensor noise.
 """
 import datetime
-from typing import Optional
 
 import numpy as np
 from numpy.typing import NDArray
@@ -104,8 +103,8 @@ def _identity_hx(state_eci_km: NDArray[np.float64]) -> NDArray[np.float64]:
 def init_filter(
     state_eci_km: NDArray[np.float64],
     epoch_utc: datetime.datetime,
-    process_noise_q: Optional[NDArray[np.float64]] = None,
-    measurement_noise_r: Optional[NDArray[np.float64]] = None,
+    process_noise_q: NDArray[np.float64] | None = None,
+    measurement_noise_r: NDArray[np.float64] | None = None,
 ) -> dict:
     """Initialize a UKF instance for a single tracked object.
 
@@ -119,7 +118,7 @@ def init_filter(
         Dict containing the filter object, last epoch, and metadata.
         Keys: 'filter', 'last_epoch_utc', 'norad_id', 'covariance_km2'.
     """
-    from filterpy.kalman import UnscentedKalmanFilter, MerweScaledSigmaPoints
+    from filterpy.kalman import MerweScaledSigmaPoints, UnscentedKalmanFilter
 
     if epoch_utc.tzinfo is None:
         raise ValueError("epoch_utc must be UTC-aware")

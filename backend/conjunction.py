@@ -12,7 +12,6 @@ Units: km for distances, seconds for time intervals, UTC-aware datetimes for all
 """
 import datetime
 import logging
-from typing import Optional
 
 import numpy as np
 from numpy.typing import NDArray
@@ -127,7 +126,7 @@ def compute_min_distance_km(
     """
     # Sentinel: return very large distance if no comparison can be made.
     _sentinel_epoch = datetime.datetime(
-        2000, 1, 1, tzinfo=datetime.timezone.utc
+        2000, 1, 1, tzinfo=datetime.UTC
     )
 
     if not traj_a or not traj_b:

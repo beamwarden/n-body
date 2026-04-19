@@ -29,7 +29,7 @@ _ISS_LINE2 = "2 25544  51.6412 225.3758 0004694 126.4788 345.7603 15.49563589442
 # Epoch derived from _ISS_LINE1: year 2024, day 45.51773148
 # = 2024-02-14 at fractional day 0.51773148
 # = 2024-02-14T12:25:32.something UTC (approximately)
-_ISS_EPOCH = datetime.datetime(2024, 2, 14, 12, 25, 31, tzinfo=datetime.timezone.utc)
+_ISS_EPOCH = datetime.datetime(2024, 2, 14, 12, 25, 31, tzinfo=datetime.UTC)
 
 
 # ---------------------------------------------------------------------------
@@ -122,7 +122,7 @@ def test_tle_epoch_utc_is_utc_aware() -> None:
 
     assert epoch.tzinfo is not None, "datetime must not be naive"
     assert epoch.utcoffset() == datetime.timedelta(0), "utcoffset must be zero (UTC)"
-    assert epoch.tzinfo == datetime.timezone.utc, "tzinfo must be datetime.timezone.utc"
+    assert epoch.tzinfo == datetime.UTC, "tzinfo must be datetime.timezone.utc"
 
     # _ISS_LINE1 epoch field: 24045.51773148 → year 2024, day 45 of the year.
     # Day 45 of 2024 is 2024-02-14 (2024 is a leap year; Jan has 31 days, so day 45
@@ -191,7 +191,8 @@ def test_propagation_output_is_eci_j2000() -> None:
     If the function returned raw TEME as if it were J2000 (i.e., no conversion),
     the difference would be zero and the test would fail.
     """
-    from sgp4.api import Satrec, WGS72, jday as sgp4_jday
+    from sgp4.api import WGS72, Satrec
+    from sgp4.api import jday as sgp4_jday
 
     # Use TLE epoch so propagation interval is ~0, isolating the frame rotation.
     epoch_utc = tle_epoch_utc(_ISS_LINE1)

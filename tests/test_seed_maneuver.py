@@ -5,11 +5,8 @@ Keplerian-to-TLE-lines formatting and validation.
 """
 import datetime
 import math
-import sqlite3
 import sys
 from pathlib import Path
-import tempfile
-import os
 
 import numpy as np
 import pytest
@@ -20,13 +17,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import backend.ingest as ingest
 from scripts.seed_maneuver import (
     _true_to_mean_anomaly_rad,
-    _tle_checksum,
-    _format_tle_epoch,
     eci_to_keplerian,
     keplerian_to_tle_lines,
     rsw_to_eci_delta_v_km_s,
 )
-
 
 # ---------------------------------------------------------------------------
 # Shared test fixtures: ISS-like circular LEO orbit
@@ -246,7 +240,7 @@ class TestTrueToMeanAnomaly:
 class TestKeplerianToTleLines:
 
     def _make_iss_epoch(self) -> datetime.datetime:
-        return datetime.datetime(2026, 3, 28, 12, 0, 0, tzinfo=datetime.timezone.utc)
+        return datetime.datetime(2026, 3, 28, 12, 0, 0, tzinfo=datetime.UTC)
 
     def test_returns_two_strings(self) -> None:
         epoch = self._make_iss_epoch()
@@ -320,7 +314,7 @@ class TestKeplerianToTleLines:
 
     def test_can_be_parsed_by_sgp4(self) -> None:
         """Generated TLE should be parseable by the sgp4 library."""
-        from sgp4.api import Satrec, WGS72
+        from sgp4.api import WGS72, Satrec
         epoch = self._make_iss_epoch()
         line1, line2 = keplerian_to_tle_lines(
             norad_id=25544, epoch_utc=epoch,
@@ -357,12 +351,11 @@ class TestRoundTrip:
         which is the actual functional requirement.
         Flagged for planner review.
         """
-        import backend.propagator as propagator
-        from sgp4.api import Satrec, WGS72, jday
+        from sgp4.api import WGS72, Satrec, jday
 
         # Use an inclined ISS-like state
         pos, vel = _iss_inclined_state()
-        epoch = datetime.datetime(2026, 3, 28, 12, 0, 0, tzinfo=datetime.timezone.utc)
+        epoch = datetime.datetime(2026, 3, 28, 12, 0, 0, tzinfo=datetime.UTC)
 
         elements = eci_to_keplerian(pos, vel)
 

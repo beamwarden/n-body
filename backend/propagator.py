@@ -11,18 +11,15 @@ would be error-prone and hard to validate; astropy provides a battle-tested, cor
 implementation. See docs/plans/2026-03-28-propagator.md Phase 1 for full justification.
 """
 import datetime
-import math
 
+import astropy.units as u
 import numpy as np
-from numpy.typing import NDArray
 
 # astropy imports for TEME-to-J2000 frame conversion (see module docstring).
 from astropy.coordinates import GCRS, TEME, CartesianDifferential, CartesianRepresentation
 from astropy.time import Time
-import astropy.units as u
-
-from sgp4.api import Satrec, WGS72, jday
-
+from numpy.typing import NDArray
+from sgp4.api import WGS72, Satrec, jday
 
 # SGP4 error code descriptions, keyed by integer error code returned by satrec.sgp4().
 _SGP4_ERRORS: dict[int, str] = {
@@ -254,7 +251,7 @@ def tle_epoch_utc(tle_line1: str) -> datetime.datetime:
     frac_day = day_of_year_frac - day_int    # fractional remainder of that day
 
     # Build the base date: Jan 1 of year + (day_int - 1) days.
-    base_date = datetime.datetime(year_4digit, 1, 1, tzinfo=datetime.timezone.utc)
+    base_date = datetime.datetime(year_4digit, 1, 1, tzinfo=datetime.UTC)
     base_date += datetime.timedelta(days=day_int - 1)
 
     # Convert fractional day to hours, minutes, seconds.

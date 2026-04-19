@@ -16,7 +16,6 @@ from fastapi.testclient import TestClient
 import backend.anomaly as anomaly
 from backend.main import app
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -113,7 +112,7 @@ def test_empty_alerts_table_returns_empty_list() -> None:
 def test_three_records_returned_in_descending_epoch_order() -> None:
     """Three inserted records are returned newest-first."""
     db = _make_in_memory_db()
-    base = datetime.datetime(2026, 3, 28, 12, 0, 0, tzinfo=datetime.timezone.utc)
+    base = datetime.datetime(2026, 3, 28, 12, 0, 0, tzinfo=datetime.UTC)
     _insert_alert(db, 25544, base, anomaly_type="filter_divergence", nis_value=13.0)
     _insert_alert(db, 25544, base + datetime.timedelta(minutes=30), anomaly_type="drag_anomaly", nis_value=14.0)
     _insert_alert(db, 25544, base + datetime.timedelta(minutes=60), anomaly_type="maneuver", nis_value=21.0)
@@ -134,7 +133,7 @@ def test_three_records_returned_in_descending_epoch_order() -> None:
 def test_limit_of_20_records() -> None:
     """Endpoint returns at most 20 records even when more exist."""
     db = _make_in_memory_db()
-    base = datetime.datetime(2026, 3, 28, 0, 0, 0, tzinfo=datetime.timezone.utc)
+    base = datetime.datetime(2026, 3, 28, 0, 0, 0, tzinfo=datetime.UTC)
     for i in range(25):
         _insert_alert(
             db, 25544,
@@ -154,7 +153,7 @@ def test_limit_of_20_records() -> None:
 def test_resolved_anomaly_includes_resolution_fields() -> None:
     """A resolved anomaly record includes resolution_epoch_utc and recalibration_duration_s."""
     db = _make_in_memory_db()
-    detection = datetime.datetime(2026, 3, 28, 19, 0, 0, tzinfo=datetime.timezone.utc)
+    detection = datetime.datetime(2026, 3, 28, 19, 0, 0, tzinfo=datetime.UTC)
     resolution = detection + datetime.timedelta(minutes=30)
     _insert_alert(
         db, 25544, detection,
@@ -183,7 +182,7 @@ def test_resolved_anomaly_includes_resolution_fields() -> None:
 def test_unresolved_anomaly_has_null_resolution_fields() -> None:
     """An active anomaly has null resolution_epoch_utc and recalibration_duration_s."""
     db = _make_in_memory_db()
-    detection = datetime.datetime(2026, 3, 28, 19, 0, 0, tzinfo=datetime.timezone.utc)
+    detection = datetime.datetime(2026, 3, 28, 19, 0, 0, tzinfo=datetime.UTC)
     _insert_alert(db, 25544, detection, anomaly_type="filter_divergence", nis_value=14.0)
 
     with TestClient(app) as client:
@@ -211,7 +210,7 @@ def test_invalid_norad_id_returns_404() -> None:
 def test_endpoint_is_read_only() -> None:
     """Calling the endpoint does not insert or modify any rows in the alerts table."""
     db = _make_in_memory_db()
-    detection = datetime.datetime(2026, 3, 28, 19, 0, 0, tzinfo=datetime.timezone.utc)
+    detection = datetime.datetime(2026, 3, 28, 19, 0, 0, tzinfo=datetime.UTC)
     _insert_alert(db, 25544, detection, anomaly_type="maneuver", nis_value=18.0)
 
     # Count rows before.
@@ -230,7 +229,7 @@ def test_endpoint_is_read_only() -> None:
 def test_only_requested_norad_id_returned() -> None:
     """Records for a different NORAD ID are not included in the response."""
     db = _make_in_memory_db()
-    base = datetime.datetime(2026, 3, 28, 12, 0, 0, tzinfo=datetime.timezone.utc)
+    base = datetime.datetime(2026, 3, 28, 12, 0, 0, tzinfo=datetime.UTC)
     _insert_alert(db, 25544, base, anomaly_type="maneuver", nis_value=20.0)
     _insert_alert(db, 99001, base, anomaly_type="drag_anomaly", nis_value=15.0)
 

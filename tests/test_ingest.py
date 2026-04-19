@@ -67,7 +67,7 @@ def _utc(
     second: int = 0,
 ) -> datetime.datetime:
     """Convenience factory for UTC-aware datetimes."""
-    return datetime.datetime(year, month, day, hour, minute, second, tzinfo=datetime.timezone.utc)
+    return datetime.datetime(year, month, day, hour, minute, second, tzinfo=datetime.UTC)
 
 
 # ---------------------------------------------------------------------------

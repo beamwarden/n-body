@@ -4,16 +4,12 @@ Covers the shared predict-update-anomaly-recalibrate pipeline.
 """
 import datetime
 import sqlite3
-from typing import Optional
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
-import pytest
 
 import backend.anomaly as anomaly
-import backend.ingest as ingest
 import backend.kalman as kalman
-import backend.processing as processing
 from backend.processing import (
     WS_TYPE_ANOMALY,
     WS_TYPE_RECALIBRATION,
@@ -22,7 +18,6 @@ from backend.processing import (
     _ensure_state_history_table,
     process_single_object,
 )
-
 
 # ---------------------------------------------------------------------------
 # Real ISS-class TLE (used for tests requiring actual SGP4 propagation)
@@ -103,7 +98,7 @@ def test_ensure_state_history_table_idempotent() -> None:
 # ---------------------------------------------------------------------------
 
 def test_build_ws_message_schema() -> None:
-    epoch_utc = datetime.datetime(2026, 3, 28, 19, 0, 0, tzinfo=datetime.timezone.utc)
+    epoch_utc = datetime.datetime(2026, 3, 28, 19, 0, 0, tzinfo=datetime.UTC)
     state_eci_km = np.array([6778.0, 0.0, 0.0, 0.0, 7.67, 0.0], dtype=np.float64)
     fs = kalman.init_filter(
         state_eci_km=state_eci_km,
@@ -123,7 +118,7 @@ def test_build_ws_message_schema() -> None:
 
 
 def test_build_ws_message_anomaly_type_propagated() -> None:
-    epoch_utc = datetime.datetime(2026, 3, 28, 19, 0, 0, tzinfo=datetime.timezone.utc)
+    epoch_utc = datetime.datetime(2026, 3, 28, 19, 0, 0, tzinfo=datetime.UTC)
     state_eci_km = np.array([6778.0, 0.0, 0.0, 0.0, 7.67, 0.0], dtype=np.float64)
     fs = kalman.init_filter(state_eci_km=state_eci_km, epoch_utc=epoch_utc)
     msg = _build_ws_message(25544, fs, WS_TYPE_ANOMALY, anomaly_type="maneuver")
@@ -322,7 +317,7 @@ def test_active_satellite_two_consecutive_exceedances_classified_as_maneuver() -
     db = _make_in_memory_db()
     entry = _make_catalog_entry(25544, object_class="active_satellite")
     filter_states: dict = {}
-    detection_epoch = datetime.datetime(2026, 3, 28, 12, 30, 0, tzinfo=datetime.timezone.utc)
+    detection_epoch = datetime.datetime(2026, 3, 28, 12, 30, 0, tzinfo=datetime.UTC)
 
     # Cold start
     process_single_object(
@@ -395,7 +390,7 @@ def test_pending_anomaly_timeout_resolves_as_provisional_type() -> None:
     db = _make_in_memory_db()
     entry = _make_catalog_entry(25544, object_class="active_satellite")
     filter_states: dict = {}
-    detection_epoch = datetime.datetime(2026, 3, 28, 12, 30, 0, tzinfo=datetime.timezone.utc)
+    detection_epoch = datetime.datetime(2026, 3, 28, 12, 30, 0, tzinfo=datetime.UTC)
 
     # Cold start
     process_single_object(
@@ -479,7 +474,7 @@ def test_maneuver_requires_two_consecutive_exceedances() -> None:
     db = _make_in_memory_db()
     entry = _make_catalog_entry(25544, object_class="active_satellite")
     filter_states = _setup_warm_filter(db, 25544, "active_satellite")
-    detection_epoch = datetime.datetime(2026, 3, 28, 12, 30, 0, tzinfo=datetime.timezone.utc)
+    detection_epoch = datetime.datetime(2026, 3, 28, 12, 30, 0, tzinfo=datetime.UTC)
 
     # --- Single exceedance: must NOT produce maneuver ---
     with patch("backend.processing.anomaly.classify_anomaly", return_value=anomaly.ANOMALY_DIVERGENCE):
@@ -522,7 +517,7 @@ def test_single_exceedance_active_satellite_stays_divergence() -> None:
     db = _make_in_memory_db()
     entry = _make_catalog_entry(25544, object_class="active_satellite")
     filter_states = _setup_warm_filter(db, 25544, "active_satellite")
-    detection_epoch = datetime.datetime(2026, 3, 28, 12, 30, 0, tzinfo=datetime.timezone.utc)
+    detection_epoch = datetime.datetime(2026, 3, 28, 12, 30, 0, tzinfo=datetime.UTC)
 
     # Cycle 1: NIS exceedance — provisional filter_divergence, no recal yet.
     with patch("backend.processing.anomaly.classify_anomaly", return_value=anomaly.ANOMALY_DIVERGENCE):
@@ -631,7 +626,7 @@ def test_maneuver_uses_higher_inflation_factor_than_divergence() -> None:
 
     def _covariance_trace_after_recal(anomaly_type: str) -> float:
         """Return trace of position covariance block after recalibration with given type."""
-        epoch = datetime.datetime(2026, 3, 28, 12, 0, 0, tzinfo=datetime.timezone.utc)
+        epoch = datetime.datetime(2026, 3, 28, 12, 0, 0, tzinfo=datetime.UTC)
         state = np.array([6778.0, 0.0, 0.0, 0.0, 7.67, 0.0], dtype=np.float64)
         fs = kalman_mod.init_filter(
             state_eci_km=state,

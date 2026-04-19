@@ -9,7 +9,6 @@ Covers:
 import datetime
 import sqlite3
 
-import pytest
 from fastapi.testclient import TestClient
 
 from backend.main import (
@@ -17,7 +16,6 @@ from backend.main import (
     _persist_conjunction_result,
     app,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -200,7 +198,7 @@ def test_conjunctions_endpoint_limit_5() -> None:
         app.state.catalog_entries = _make_catalog_entries([25544])
         app.state.filter_states = {}
 
-        base_epoch = datetime.datetime(2026, 3, 29, 0, 0, 0, tzinfo=datetime.timezone.utc)
+        base_epoch = datetime.datetime(2026, 3, 29, 0, 0, 0, tzinfo=datetime.UTC)
         inserted_epochs = []
         for i in range(10):
             epoch_utc = base_epoch + datetime.timedelta(hours=i)

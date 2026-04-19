@@ -16,7 +16,6 @@ duration values.
 """
 import datetime
 import sqlite3
-from typing import Optional
 
 import numpy as np
 from numpy.typing import NDArray
@@ -151,7 +150,7 @@ def classify_anomaly(
     innovation_eci_km: list[float],
     is_active_satellite: bool,
     threshold: float = CHI2_THRESHOLD_6DOF,
-) -> Optional[str]:
+) -> str | None:
     """Classify the type of detected anomaly based on NIS pattern and innovation.
 
     Classification rules (per F-031, F-032), applied in priority order — first

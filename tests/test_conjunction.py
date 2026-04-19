@@ -18,7 +18,6 @@ import numpy as np
 
 import backend.conjunction as conjunction
 
-
 # ---------------------------------------------------------------------------
 # Shared test TLEs (real ISS and DELTA-1 TLEs cached in the test DB)
 # ---------------------------------------------------------------------------
@@ -33,7 +32,7 @@ _ATLAS_TLE1 = "1 27386U 02009A   26087.86169519  .00000121  00000-0  53150-4 0  
 _ATLAS_TLE2 = "2 27386  98.3758  41.0062 0001214  81.5597 285.6451 14.39043458261937"
 
 # Reference epoch (UTC-aware)
-_EPOCH_UTC = datetime.datetime(2026, 3, 28, 12, 0, 0, tzinfo=datetime.timezone.utc)
+_EPOCH_UTC = datetime.datetime(2026, 3, 28, 12, 0, 0, tzinfo=datetime.UTC)
 
 
 # ---------------------------------------------------------------------------

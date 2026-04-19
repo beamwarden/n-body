@@ -10,22 +10,21 @@ Covers:
 import asyncio
 import datetime
 import logging
+import os
 import sqlite3
 import tempfile
-import os
 import unittest.mock
-from typing import Optional
 
 import httpx
 import pytest
 
 from backend.ingest import (
+    N2YO_STALE_THRESHOLD_S,
     _select_n2yo_fallback_ids,
     cache_tles,
     fetch_tle_n2yo,
     init_catalog_db,
     poll_once,
-    N2YO_STALE_THRESHOLD_S,
 )
 
 # ---------------------------------------------------------------------------
@@ -49,7 +48,7 @@ _FAKE_API_KEY = "s3cr3t-n2yo-key"
 # ---------------------------------------------------------------------------
 
 def _utc(year: int, month: int, day: int, hour: int = 0) -> datetime.datetime:
-    return datetime.datetime(year, month, day, hour, tzinfo=datetime.timezone.utc)
+    return datetime.datetime(year, month, day, hour, tzinfo=datetime.UTC)
 
 
 def _make_db() -> sqlite3.Connection:
@@ -74,7 +73,7 @@ def _n2yo_response_json(
     }
 
 
-def _mock_httpx_response(status_code: int, json_body: Optional[dict] = None) -> httpx.Response:
+def _mock_httpx_response(status_code: int, json_body: dict | None = None) -> httpx.Response:
     """Build a minimal httpx.Response for mocking."""
     import json as _json
     content = _json.dumps(json_body).encode() if json_body is not None else b""

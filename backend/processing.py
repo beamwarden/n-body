@@ -10,13 +10,11 @@ Units: km for position, km/s for velocity, seconds for time deltas.
 import datetime
 import logging
 import sqlite3
-from typing import Optional
 
 import numpy as np
 from numpy.typing import NDArray
 
 import backend.anomaly as anomaly
-import backend.ingest as ingest
 import backend.kalman as kalman
 import backend.propagator as propagator
 
@@ -90,6 +88,7 @@ def generate_track_samples(
 # classification is resolved using the provisional type and recalibration
 # proceeds.  Configurable via NBODY_PENDING_ANOMALY_TIMEOUT_HOURS env var.
 import os as _os
+
 _PENDING_ANOMALY_TIMEOUT_HOURS: float = float(
     _os.environ.get("NBODY_PENDING_ANOMALY_TIMEOUT_HOURS", "2.0")
 )
@@ -139,9 +138,9 @@ def _build_ws_message(
     norad_id: int,
     filter_state: dict,
     message_type: str,
-    anomaly_type: Optional[str] = None,
-    tle_epoch_utc_str: Optional[str] = None,
-    observation_eci_km: Optional[NDArray[np.float64]] = None,
+    anomaly_type: str | None = None,
+    tle_epoch_utc_str: str | None = None,
+    observation_eci_km: NDArray[np.float64] | None = None,
 ) -> dict:
     """Construct a WebSocket message conforming to architecture Section 3.5 schema.
 
@@ -203,7 +202,7 @@ def _insert_state_history_row(
     covariance_km2: list,
     nis: float,
     confidence: float,
-    anomaly_type: Optional[str],
+    anomaly_type: str | None,
     message_type: str,
 ) -> None:
     """Write one state snapshot row to the state_history table.
@@ -290,7 +289,7 @@ def process_single_object(
     # ingest.py stores epochs as 'YYYY-MM-DDTHH:MM:SSZ'.
     epoch_utc: datetime.datetime = datetime.datetime.strptime(
         epoch_utc_str, "%Y-%m-%dT%H:%M:%SZ"
-    ).replace(tzinfo=datetime.timezone.utc)
+    ).replace(tzinfo=datetime.UTC)
 
     is_active_satellite: bool = entry.get("object_class") == "active_satellite"
 
@@ -337,7 +336,7 @@ def process_single_object(
         )
         cold_start_messages: list[dict] = [ws_message]
         if generate_tracks:
-            _track_now = datetime.datetime.now(tz=datetime.timezone.utc)
+            _track_now = datetime.datetime.now(tz=datetime.UTC)
             cold_start_samples = generate_track_samples(
                 tle_line1=tle_line1,
                 tle_line2=tle_line2,
@@ -390,7 +389,7 @@ def process_single_object(
     innovation_eci_km_list: list = filter_state["innovation_eci_km"].tolist()
 
     # Anomaly classification.
-    detected_anomaly_type: Optional[str] = anomaly.classify_anomaly(
+    detected_anomaly_type: str | None = anomaly.classify_anomaly(
         norad_id=norad_id,
         nis_history=nis_history,
         innovation_eci_km=innovation_eci_km_list,
@@ -425,7 +424,7 @@ def process_single_object(
             )
         else:
             # Re-run classifier against updated nis_history (now has cycle 2 NIS).
-            reclassified: Optional[str] = anomaly.classify_anomaly(
+            reclassified: str | None = anomaly.classify_anomaly(
                 norad_id=norad_id,
                 nis_history=nis_history,
                 innovation_eci_km=innovation_eci_km_list,
@@ -520,7 +519,7 @@ def process_single_object(
         messages.append(anomaly_ws_message)
         messages.append(recal_ws_message)
         if messages and generate_tracks:
-            _track_start_epoch: datetime.datetime = datetime.datetime.now(tz=datetime.timezone.utc)
+            _track_start_epoch: datetime.datetime = datetime.datetime.now(tz=datetime.UTC)
             _track_samples = generate_track_samples(
                 tle_line1=filter_state["last_tle_line1"],
                 tle_line2=filter_state["last_tle_line2"],
@@ -645,10 +644,10 @@ def process_single_object(
 
     else:
         # No anomaly — check if a previously-flagged anomaly has now resolved.
-        anomaly_row_id_pending: Optional[int] = filter_state.pop(
+        anomaly_row_id_pending: int | None = filter_state.pop(
             "_anomaly_row_id", None
         )
-        detection_epoch_pending: Optional[datetime.datetime] = filter_state.pop(
+        detection_epoch_pending: datetime.datetime | None = filter_state.pop(
             "_anomaly_detection_epoch_utc", None
         )
         if (
@@ -698,7 +697,7 @@ def process_single_object(
         messages.append(ws_message)
 
     if messages and generate_tracks:
-        _final_track_start_epoch: datetime.datetime = datetime.datetime.now(tz=datetime.timezone.utc)
+        _final_track_start_epoch: datetime.datetime = datetime.datetime.now(tz=datetime.UTC)
         _final_track_samples = generate_track_samples(
             tle_line1=filter_state["last_tle_line1"],
             tle_line2=filter_state["last_tle_line2"],

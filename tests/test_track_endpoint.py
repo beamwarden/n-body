@@ -13,7 +13,6 @@ import datetime
 import math
 import sqlite3
 
-import pytest
 from fastapi.testclient import TestClient
 
 import backend.anomaly as anomaly

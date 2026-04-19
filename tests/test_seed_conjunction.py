@@ -9,17 +9,11 @@ test strategy section.
 """
 import datetime
 import json
-import math
-import os
 import sqlite3
 import sys
-import tempfile
 from pathlib import Path
-from typing import Optional
-from unittest import mock
 
 import numpy as np
-import pytest
 
 # Add project root to path so scripts and backend packages can be imported.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -38,7 +32,7 @@ _ISS_TLE_LINE2 = "2 25544  51.6400 208.9163 0006703 124.7256 235.4562 15.5424419
 
 def _seed_primary_tle(db: sqlite3.Connection) -> None:
     """Insert the ISS TLE fixture into an in-memory DB for use by tests."""
-    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    now_utc = datetime.datetime.now(datetime.UTC)
     tle_record = {
         "norad_id": 25544,
         "epoch_utc": "2026-03-28T12:00:00Z",
@@ -65,7 +59,7 @@ def test_clear_removes_synthetic_object(tmp_path: Path) -> None:
 
     db_path = str(tmp_path / "tle_cache.db")
     db = ingest.init_catalog_db(db_path)
-    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    now_utc = datetime.datetime.now(datetime.UTC)
     ingest.cache_tles(
         db,
         [{"norad_id": 99999, "epoch_utc": "2026-03-28T12:00:00Z",
@@ -344,7 +338,7 @@ def test_full_conjunction_scenario(tmp_path: Path) -> None:
     # DEVIATION from plan step 7 test pseudocode: plan described a simplified call
     # signature; actual backend/conjunction.py uses anomalous_norad_id and
     # catalog_name_map parameters. Adapted to match the real interface.
-    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    now_utc = datetime.datetime.now(datetime.UTC)
     result = conjunction.screen_conjunctions(
         anomalous_norad_id=25544,
         anomalous_tle_line1=primary_tle["tle_line1"],
@@ -410,7 +404,7 @@ def test_catalog_json_valid_structure() -> None:
     catalog_path = str(
         Path(__file__).resolve().parent.parent / "data" / "catalog" / "catalog.json"
     )
-    with open(catalog_path, "r", encoding="utf-8") as fh:
+    with open(catalog_path, encoding="utf-8") as fh:
         catalog = json.load(fh)
 
     assert isinstance(catalog, list), "catalog.json must be a JSON array"
@@ -453,7 +447,7 @@ def test_catalog_no_synthetic_ids() -> None:
     catalog_path = str(
         Path(__file__).resolve().parent.parent / "data" / "catalog" / "catalog.json"
     )
-    with open(catalog_path, "r", encoding="utf-8") as fh:
+    with open(catalog_path, encoding="utf-8") as fh:
         catalog = json.load(fh)
 
     synthetic_entries = [e for e in catalog if int(e["norad_id"]) >= 90000]
