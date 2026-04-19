@@ -272,7 +272,7 @@
   {
     "norad_id": 22675,
     "name": "COSMOS 2251",
-    "object_class": "payload"
+    "object_class": "debris"
   },
   {
     "norad_id": 33775,
@@ -347,11 +347,6 @@
   {
     "norad_id": 29509,
     "name": "CZ-4 DEB (2006-046E)",
-    "object_class": "debris"
-  },
-  {
-    "norad_id": 99999,
-    "name": "THREAT-SIM",
     "object_class": "debris"
   }
 ]

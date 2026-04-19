@@ -85,7 +85,7 @@ class TestReplayTles:
         Subsequent TLEs produce predict+update rows. So 3 TLEs -> 3 rows
         (1 cold start + 2 warm updates), unless duplicate epochs occur.
         """
-        start = datetime.datetime(2026, 3, 28, 10, 0, 0, tzinfo=datetime.UTC)
+        start = datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=1)
         db_path, catalog_path = _make_test_db_with_catalog_json(
             norad_ids=[25544],
             tles_per_object=3,
@@ -136,7 +136,7 @@ class TestReplayTles:
 
     def test_multiple_objects_all_processed(self) -> None:
         """Multiple objects should each get state_history rows."""
-        start = datetime.datetime(2026, 3, 28, 10, 0, 0, tzinfo=datetime.UTC)
+        start = datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=1)
         norad_ids = [25544, 44713]
         db_path, catalog_path = _make_test_db_with_catalog_json(
             norad_ids=norad_ids,
@@ -160,7 +160,7 @@ class TestReplayTles:
 
     def test_progress_printed_to_stdout(self, capsys) -> None:
         """replay_tles should print [replay] progress lines to stdout."""
-        start = datetime.datetime(2026, 3, 28, 10, 0, 0, tzinfo=datetime.UTC)
+        start = datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=1)
         db_path, catalog_path = _make_test_db_with_catalog_json(
             norad_ids=[25544],
             tles_per_object=2,
