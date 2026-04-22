@@ -305,7 +305,7 @@ async def _run_conjunction_screening(app: FastAPI, screening_inputs: dict) -> No
         # Parse epoch string to UTC-aware datetime.
         screening_epoch_utc: datetime.datetime = datetime.datetime.strptime(
             screening_epoch_str, "%Y-%m-%dT%H:%M:%SZ"
-        ).replace(tzinfo=datetime.UTC)
+        ).replace(tzinfo=datetime.timezone.utc)
 
         # Build other_objects list from filter_states: include every non-anomalous
         # object that has last_tle_line1 and last_tle_line2 set.
@@ -1092,6 +1092,7 @@ async def get_object_track(
     # Plan decision 1 sets default step_s = 60 (not 30). Implemented as 60 here.
     # Tech debt entry TD-025 added for UI configurability (post-POC).
     step_s: int = 60,
+    center_time: str | None = None,
 ) -> dict:
     """Return historical and predictive track points for one tracked object.
 
@@ -1148,9 +1149,18 @@ async def get_object_track(
     tle_line1: str = tle_record["tle_line1"]
     tle_line2: str = tle_record["tle_line2"]
 
-    # Reference epoch is always now so the track is centered on the current
-    # satellite position, matching the SampledPositionProperty animation window.
-    reference_epoch_utc: datetime.datetime = datetime.datetime.now(tz=datetime.UTC)
+    # Reference epoch defaults to now but accepts a caller-supplied center_time
+    # so the frontend can align the track with the Cesium clock (which may run
+    # faster than real time due to clock.multiplier > 1).
+    if center_time is not None:
+        try:
+            reference_epoch_utc = datetime.datetime.fromisoformat(
+                center_time.replace("Z", "+00:00")
+            )
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid center_time format — use ISO 8601.")
+    else:
+        reference_epoch_utc = datetime.datetime.now(tz=datetime.timezone.utc)
 
     # --- Backward track ---
     # Range: from -seconds_back up to (not including) 0, step step_s, then t=0.
@@ -1638,7 +1648,7 @@ async def websocket_live(websocket: WebSocket) -> None:
                 last_tle2: str | None = filter_state.get("last_tle_line2")
                 last_epoch: datetime.datetime | None = filter_state.get("last_epoch_utc")
                 if last_tle1 and last_tle2 and last_epoch:
-                    track_start = datetime.datetime.now(tz=datetime.UTC)
+                    track_start = datetime.datetime.now(tz=datetime.timezone.utc)
                     track_samples = await asyncio.to_thread(
                         processing.generate_track_samples,
                         tle_line1=last_tle1,
@@ -1658,6 +1668,7 @@ async def websocket_live(websocket: WebSocket) -> None:
                     norad_id,
                     exc,
                 )
+                break  # Connection is dead — stop the burst immediately.
 
         # Keepalive receive loop — content is ignored.
         while True:
