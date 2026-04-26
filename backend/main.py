@@ -37,9 +37,15 @@ from dotenv import load_dotenv
 
 load_dotenv()  # load .env from repo root (no-op if file absent or vars already set)
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+# H-4: optional API key auth. Set NBODY_API_KEY in .env to enable.
+# If unset, all endpoints are unauthenticated (dev / local-demo default).
+_API_KEY: str | None = os.environ.get("NBODY_API_KEY") or None
+
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from starlette.middleware.base import BaseHTTPMiddleware
 
 import backend.anomaly as anomaly
 import backend.conjunction as conjunction
@@ -266,6 +272,34 @@ class ConnectionManager:
 
 # Module-level connection manager instance (accessed by endpoint and background task).
 ws_manager = ConnectionManager()
+
+
+class _ApiKeyMiddleware(BaseHTTPMiddleware):
+    """Enforce NBODY_API_KEY on all HTTP endpoints except /config and CORS preflight.
+
+    Accepts the key as a Bearer token (Authorization: Bearer <key>) or as a
+    ?key=<key> query parameter. WebSocket auth is handled separately in the
+    websocket_live endpoint handler (middleware does not intercept WS upgrades).
+
+    If NBODY_API_KEY is not set, all requests are allowed through unchanged.
+    """
+
+    _EXEMPT_PATHS: frozenset[str] = frozenset({"/config", "/docs", "/openapi.json", "/redoc"})
+
+    async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+        if _API_KEY is None or request.url.path in self._EXEMPT_PATHS:
+            return await call_next(request)
+        # Allow CORS preflight through so the CORSMiddleware can respond correctly.
+        if request.method == "OPTIONS":
+            return await call_next(request)
+        # Bearer token
+        auth: str | None = request.headers.get("Authorization")
+        if auth and auth.startswith("Bearer ") and auth[7:] == _API_KEY:
+            return await call_next(request)
+        # ?key= query parameter (useful for browser-initiated fetches and WS polyfills)
+        if request.query_params.get("key") == _API_KEY:
+            return await call_next(request)
+        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
 
 
 # _build_ws_message is imported from backend.processing above.
@@ -682,6 +716,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(_ApiKeyMiddleware)
 
 
 # ---------------------------------------------------------------------------
@@ -1642,6 +1677,15 @@ async def websocket_live(websocket: WebSocket) -> None:
     {type, norad_id, epoch_utc, eci_km, eci_km_s,
      covariance_diagonal_km2, nis, confidence, anomaly_type}
     """
+    # H-4: API key auth check before accepting. Close 1008 (Policy Violation) if key is
+    # required but missing or wrong. Pass ?key=<value> as a query parameter on the WS URL.
+    if _API_KEY is not None:
+        ws_key: str | None = websocket.query_params.get("key")
+        if ws_key != _API_KEY:
+            await websocket.close(code=1008)
+            logger.warning("WebSocket connection rejected: missing or invalid API key")
+            return
+
     # Enforce connection cap before accepting (returns 503 to client).
     if ws_manager.active_count() >= MAX_WS_CONNECTIONS:
         await websocket.close(code=1013)  # 1013: Try Again Later

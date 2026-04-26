@@ -28,6 +28,11 @@ import httpx
 # F-002: 30-minute poll interval
 POLL_INTERVAL_S: int = 1800
 
+# Space-Track HTTP 429 rate-limit retry policy (H-3)
+_ST_429_MAX_RETRIES: int = 4
+_ST_429_INITIAL_BACKOFF_S: float = 5.0
+_ST_429_MAX_BACKOFF_S: float = 300.0
+
 # Space-Track.org API endpoints
 _SPACETRACK_BASE_URL: str = "https://www.space-track.org"
 _SPACETRACK_LOGIN_URL: str = f"{_SPACETRACK_BASE_URL}/ajaxauth/login"
@@ -465,8 +470,40 @@ async def fetch_tles(norad_ids: list[int], session_cookie: str) -> list[dict]:
 
     headers = {"Cookie": session_cookie}
 
+    backoff_s: float = _ST_429_INITIAL_BACKOFF_S
+    response: httpx.Response
+
     async with httpx.AsyncClient(follow_redirects=True) as client:
-        response = await client.get(url, headers=headers)
+        for attempt in range(_ST_429_MAX_RETRIES + 1):
+            response = await client.get(url, headers=headers)
+
+            if response.status_code != 429:
+                break
+
+            # Respect Retry-After header; fall back to exponential backoff.
+            wait_s: float = backoff_s
+            retry_after: str | None = response.headers.get("Retry-After")
+            if retry_after is not None:
+                try:
+                    wait_s = max(float(retry_after), 1.0)
+                except ValueError:
+                    pass
+
+            if attempt == _ST_429_MAX_RETRIES:
+                logger.warning(
+                    "Space-Track rate limit (HTTP 429): max retries (%d) exhausted — skipping poll cycle",
+                    _ST_429_MAX_RETRIES,
+                )
+                return []
+
+            logger.warning(
+                "Space-Track rate limit (HTTP 429): attempt %d/%d — waiting %.0fs before retry",
+                attempt + 1,
+                _ST_429_MAX_RETRIES,
+                wait_s,
+            )
+            await asyncio.sleep(wait_s)
+            backoff_s = min(backoff_s * 2, _ST_429_MAX_BACKOFF_S)
 
     logger.info(
         "F-006 SPACETRACK_API_RESPONSE timestamp=%s endpoint=%s status=%d content_length=%d",
