@@ -44,10 +44,9 @@ _API_KEY: str | None = os.environ.get("NEBODY_API_KEY") or None
 # H-5: configurable CORS origins. Set NEBODY_ALLOWED_ORIGINS to a comma-separated
 # list of allowed origins (e.g. "http://keep-0001.local:3000,http://localhost:3000").
 # Falls back to ["*"] if unset so dev and existing deployments are unaffected.
-_ALLOWED_ORIGINS: list[str] = (
-    [o.strip() for o in os.environ.get("NEBODY_ALLOWED_ORIGINS", "").split(",") if o.strip()]
-    or ["*"]
-)
+_ALLOWED_ORIGINS: list[str] = [
+    o.strip() for o in os.environ.get("NEBODY_ALLOWED_ORIGINS", "").split(",") if o.strip()
+] or ["*"]
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -1230,9 +1229,7 @@ async def get_object_track(
     # faster than real time due to clock.multiplier > 1).
     if center_time is not None:
         try:
-            reference_epoch_utc = datetime.datetime.fromisoformat(
-                center_time.replace("Z", "+00:00")
-            )
+            reference_epoch_utc = datetime.datetime.fromisoformat(center_time.replace("Z", "+00:00"))
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid center_time format — use ISO 8601.") from None
     else:

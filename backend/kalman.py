@@ -25,7 +25,7 @@ NIS_EXPECTED_6DOF: float = 6.0
 
 # Adaptive Q tuning (H-6): innovation covariance matching.
 # Scale is clamped so Q can't collapse to zero or grow unbounded.
-Q_ADAPT_MIN_SAMPLES: int = 5   # observations required before adapting
+Q_ADAPT_MIN_SAMPLES: int = 5  # observations required before adapting
 Q_ADAPT_SCALE_MIN: float = 0.1
 Q_ADAPT_SCALE_MAX: float = 10.0
 

@@ -46,6 +46,7 @@ reload-catalog:
 # Run unit tests (mirrors ci-develop gate)
 test:
 	uv run ruff check backend/ tests/
+	uv run ruff format --check backend/ tests/
 	uv run pytest -m unit -v --tb=short
 
 # Run all tests including integration (requires running backend)

@@ -506,6 +506,7 @@ def test_ensure_state_history_table_idempotent() -> None:
 def test_api_key_middleware_allows_all_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
     """When NEBODY_API_KEY is not set, all requests pass through unauthenticated."""
     import backend.main as main_module
+
     monkeypatch.setattr(main_module, "_API_KEY", None)
     with TestClient(app, raise_server_exceptions=True) as client:
         _setup_app_state_for_catalog([25544])
@@ -516,6 +517,7 @@ def test_api_key_middleware_allows_all_when_unset(monkeypatch: pytest.MonkeyPatc
 def test_api_key_middleware_rejects_missing_key(monkeypatch: pytest.MonkeyPatch) -> None:
     """When NEBODY_API_KEY is set, requests without a key return 401."""
     import backend.main as main_module
+
     monkeypatch.setattr(main_module, "_API_KEY", "test-secret")
     # Middleware rejects before the route handler runs — no app state needed.
     with TestClient(app, raise_server_exceptions=True) as client:
@@ -527,6 +529,7 @@ def test_api_key_middleware_rejects_missing_key(monkeypatch: pytest.MonkeyPatch)
 def test_api_key_middleware_accepts_bearer_token(monkeypatch: pytest.MonkeyPatch) -> None:
     """Bearer token in Authorization header is accepted."""
     import backend.main as main_module
+
     monkeypatch.setattr(main_module, "_API_KEY", "test-secret")
     with TestClient(app, raise_server_exceptions=True) as client:
         _setup_app_state_for_catalog([25544])
@@ -537,6 +540,7 @@ def test_api_key_middleware_accepts_bearer_token(monkeypatch: pytest.MonkeyPatch
 def test_api_key_middleware_accepts_query_param(monkeypatch: pytest.MonkeyPatch) -> None:
     """?key= query parameter is accepted as an alternative to the Bearer token."""
     import backend.main as main_module
+
     monkeypatch.setattr(main_module, "_API_KEY", "test-secret")
     with TestClient(app, raise_server_exceptions=True) as client:
         _setup_app_state_for_catalog([25544])
@@ -547,6 +551,7 @@ def test_api_key_middleware_accepts_query_param(monkeypatch: pytest.MonkeyPatch)
 def test_api_key_middleware_rejects_wrong_key(monkeypatch: pytest.MonkeyPatch) -> None:
     """A wrong key value returns 401 regardless of delivery method."""
     import backend.main as main_module
+
     monkeypatch.setattr(main_module, "_API_KEY", "test-secret")
     with TestClient(app, raise_server_exceptions=True) as client:
         assert client.get("/catalog", headers={"Authorization": "Bearer wrong"}).status_code == 401
@@ -556,6 +561,7 @@ def test_api_key_middleware_rejects_wrong_key(monkeypatch: pytest.MonkeyPatch) -
 def test_api_key_middleware_exempts_config(monkeypatch: pytest.MonkeyPatch) -> None:
     """/config is reachable without a key even when auth is enabled."""
     import backend.main as main_module
+
     monkeypatch.setattr(main_module, "_API_KEY", "test-secret")
     with TestClient(app, raise_server_exceptions=True) as client:
         response = client.get("/config")
