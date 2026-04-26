@@ -252,7 +252,7 @@ def tle_epoch_utc(tle_line1: str) -> datetime.datetime:
     frac_day = day_of_year_frac - day_int  # fractional remainder of that day
 
     # Build the base date: Jan 1 of year + (day_int - 1) days.
-    base_date = datetime.datetime(year_4digit, 1, 1, tzinfo=datetime.UTC)
+    base_date = datetime.datetime(year_4digit, 1, 1, tzinfo=datetime.timezone.utc)
     base_date += datetime.timedelta(days=day_int - 1)
 
     # Convert fractional day to hours, minutes, seconds.

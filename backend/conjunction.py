@@ -119,7 +119,7 @@ def compute_min_distance_km(
         datetime.min UTC-aware).
     """
     # Sentinel: return very large distance if no comparison can be made.
-    _sentinel_epoch = datetime.datetime(2000, 1, 1, tzinfo=datetime.UTC)
+    _sentinel_epoch = datetime.datetime(2000, 1, 1, tzinfo=datetime.timezone.utc)
 
     if not traj_a or not traj_b:
         logger.warning(

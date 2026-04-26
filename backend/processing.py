@@ -290,7 +290,7 @@ def process_single_object(
     # Parse TLE epoch string to UTC-aware datetime.
     # ingest.py stores epochs as 'YYYY-MM-DDTHH:MM:SSZ'.
     epoch_utc: datetime.datetime = datetime.datetime.strptime(epoch_utc_str, "%Y-%m-%dT%H:%M:%SZ").replace(
-        tzinfo=datetime.UTC
+        tzinfo=datetime.timezone.utc
     )
 
     is_active_satellite: bool = entry.get("object_class") == "active_satellite"
@@ -338,7 +338,7 @@ def process_single_object(
         )
         cold_start_messages: list[dict] = [ws_message]
         if generate_tracks:
-            _track_now = datetime.datetime.now(tz=datetime.UTC)
+            _track_now = datetime.datetime.now(tz=datetime.timezone.utc)
             cold_start_samples = generate_track_samples(
                 tle_line1=tle_line1,
                 tle_line2=tle_line2,
@@ -521,7 +521,7 @@ def process_single_object(
         messages.append(anomaly_ws_message)
         messages.append(recal_ws_message)
         if messages and generate_tracks:
-            _track_start_epoch: datetime.datetime = datetime.datetime.now(tz=datetime.UTC)
+            _track_start_epoch: datetime.datetime = datetime.datetime.now(tz=datetime.timezone.utc)
             _track_samples = generate_track_samples(
                 tle_line1=filter_state["last_tle_line1"],
                 tle_line2=filter_state["last_tle_line2"],
@@ -697,7 +697,7 @@ def process_single_object(
         messages.append(ws_message)
 
     if messages and generate_tracks:
-        _final_track_start_epoch: datetime.datetime = datetime.datetime.now(tz=datetime.UTC)
+        _final_track_start_epoch: datetime.datetime = datetime.datetime.now(tz=datetime.timezone.utc)
         _final_track_samples = generate_track_samples(
             tle_line1=filter_state["last_tle_line1"],
             tle_line2=filter_state["last_tle_line2"],
