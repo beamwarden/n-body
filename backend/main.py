@@ -37,9 +37,9 @@ from dotenv import load_dotenv
 
 load_dotenv()  # load .env from repo root (no-op if file absent or vars already set)
 
-# H-4: optional API key auth. Set NBODY_API_KEY in .env to enable.
+# H-4: optional API key auth. Set NEBODY_API_KEY in .env to enable.
 # If unset, all endpoints are unauthenticated (dev / local-demo default).
-_API_KEY: str | None = os.environ.get("NBODY_API_KEY") or None
+_API_KEY: str | None = os.environ.get("NEBODY_API_KEY") or None
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -275,13 +275,13 @@ ws_manager = ConnectionManager()
 
 
 class _ApiKeyMiddleware(BaseHTTPMiddleware):
-    """Enforce NBODY_API_KEY on all HTTP endpoints except /config and CORS preflight.
+    """Enforce NEBODY_API_KEY on all HTTP endpoints except /config and CORS preflight.
 
     Accepts the key as a Bearer token (Authorization: Bearer <key>) or as a
     ?key=<key> query parameter. WebSocket auth is handled separately in the
     websocket_live endpoint handler (middleware does not intercept WS upgrades).
 
-    If NBODY_API_KEY is not set, all requests are allowed through unchanged.
+    If NEBODY_API_KEY is not set, all requests are allowed through unchanged.
     """
 
     _EXEMPT_PATHS: frozenset[str] = frozenset({"/config", "/docs", "/openapi.json", "/redoc"})
