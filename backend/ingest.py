@@ -144,6 +144,9 @@ def init_catalog_db(db_path: str) -> sqlite3.Connection:
     if db_dir:
         os.makedirs(db_dir, exist_ok=True)
 
+    # check_same_thread=False is safe here because WAL mode (set below) allows
+    # concurrent readers alongside the single writer. Without WAL, sharing a
+    # connection across threads would risk journal corruption.
     conn = sqlite3.connect(db_path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
@@ -480,6 +483,13 @@ async def fetch_tles(norad_ids: list[int], session_cookie: str) -> list[dict]:
             if response.status_code != 429:
                 break
 
+            if attempt == _ST_429_MAX_RETRIES:
+                logger.warning(
+                    "Space-Track rate limit (HTTP 429): max retries (%d) exhausted — skipping poll cycle",
+                    _ST_429_MAX_RETRIES,
+                )
+                return []
+
             # Respect Retry-After header; fall back to exponential backoff.
             wait_s: float = backoff_s
             retry_after: str | None = response.headers.get("Retry-After")
@@ -488,13 +498,6 @@ async def fetch_tles(norad_ids: list[int], session_cookie: str) -> list[dict]:
                     wait_s = max(float(retry_after), 1.0)
                 except ValueError:
                     pass
-
-            if attempt == _ST_429_MAX_RETRIES:
-                logger.warning(
-                    "Space-Track rate limit (HTTP 429): max retries (%d) exhausted — skipping poll cycle",
-                    _ST_429_MAX_RETRIES,
-                )
-                return []
 
             logger.warning(
                 "Space-Track rate limit (HTTP 429): attempt %d/%d — waiting %.0fs before retry",

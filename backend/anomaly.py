@@ -449,7 +449,7 @@ def get_active_anomalies(db: sqlite3.Connection) -> list[dict]:
     results: list[dict] = []
     for row in cursor.fetchall():
         row_id, norad_id, detection_epoch_str, anomaly_type, nis_value, status = row
-        detection_epoch_utc = datetime.datetime.fromisoformat(detection_epoch_str)
+        detection_epoch_utc = datetime.datetime.fromisoformat(detection_epoch_str.replace("Z", "+00:00"))
         results.append(
             {
                 "id": row_id,
@@ -524,7 +524,7 @@ def load_active_anomalies(db: sqlite3.Connection) -> dict[int, dict]:
         norad_id, anomaly_row_id, detection_epoch_str = row[0], row[1], row[2]
         result[norad_id] = {
             "anomaly_row_id": anomaly_row_id,
-            "detection_epoch_utc": datetime.datetime.fromisoformat(detection_epoch_str),
+            "detection_epoch_utc": datetime.datetime.fromisoformat(detection_epoch_str.replace("Z", "+00:00")),
         }
     return result
 
