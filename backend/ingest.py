@@ -400,7 +400,7 @@ async def authenticate() -> str:
 
     login_payload = {"identity": user, "password": password}
 
-    call_time_utc = datetime.datetime.now(datetime.timezone.utc)
+    call_time_utc = datetime.datetime.now(datetime.UTC)
     logger.info(
         "F-006 SPACETRACK_API_CALL timestamp=%s endpoint=%s",
         call_time_utc.isoformat(),
@@ -412,7 +412,7 @@ async def authenticate() -> str:
 
     logger.info(
         "F-006 SPACETRACK_API_RESPONSE timestamp=%s endpoint=%s status=%d",
-        datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        datetime.datetime.now(datetime.UTC).isoformat(),
         _SPACETRACK_LOGIN_URL,
         response.status_code,
     )
@@ -463,7 +463,7 @@ async def fetch_tles(norad_ids: list[int], session_cookie: str) -> list[dict]:
         f"/orderby/EPOCH desc/limit/{len(norad_ids)}/format/tle"
     )
 
-    call_time_utc = datetime.datetime.now(datetime.timezone.utc)
+    call_time_utc = datetime.datetime.now(datetime.UTC)
     logger.info(
         "F-006 SPACETRACK_API_CALL timestamp=%s endpoint=%s norad_count=%d",
         call_time_utc.isoformat(),
@@ -510,7 +510,7 @@ async def fetch_tles(norad_ids: list[int], session_cookie: str) -> list[dict]:
 
     logger.info(
         "F-006 SPACETRACK_API_RESPONSE timestamp=%s endpoint=%s status=%d content_length=%d",
-        datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        datetime.datetime.now(datetime.UTC).isoformat(),
         url,
         response.status_code,
         len(response.content),
@@ -619,7 +619,7 @@ def _parse_tle_epoch_utc(tle_line1: str) -> str:
     # day_of_year_frac is 1-based: 1.0 = Jan 1 00:00:00
     day_int = int(day_of_year_frac)
     frac_day = day_of_year_frac - day_int
-    epoch_dt = datetime.datetime(year, 1, 1, tzinfo=datetime.timezone.utc) + datetime.timedelta(
+    epoch_dt = datetime.datetime(year, 1, 1, tzinfo=datetime.UTC) + datetime.timedelta(
         days=day_int - 1, seconds=frac_day * 86400.0
     )
 
@@ -654,7 +654,7 @@ async def fetch_tle_n2yo(
     url = f"{_N2YO_TLE_URL_TEMPLATE.format(norad_id=norad_id)}&apiKey={api_key}"
     redacted_url = f"{_N2YO_TLE_URL_TEMPLATE.format(norad_id=norad_id)}&apiKey=***"
 
-    call_time_utc = datetime.datetime.now(datetime.timezone.utc)
+    call_time_utc = datetime.datetime.now(datetime.UTC)
     logger.info(
         "F-006 N2YO_API_CALL timestamp=%s endpoint=%s norad_id=%d",
         call_time_utc.isoformat(),
@@ -675,7 +675,7 @@ async def fetch_tle_n2yo(
 
     logger.info(
         "F-006 N2YO_API_RESPONSE timestamp=%s endpoint=%s norad_id=%d status=%d",
-        datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        datetime.datetime.now(datetime.UTC).isoformat(),
         redacted_url,
         norad_id,
         response.status_code,
@@ -792,7 +792,7 @@ def _select_n2yo_fallback_ids(
         else:
             try:
                 epoch_dt = datetime.datetime.strptime(row["epoch_utc"], "%Y-%m-%dT%H:%M:%SZ").replace(
-                    tzinfo=datetime.timezone.utc
+                    tzinfo=datetime.UTC
                 )
             except ValueError:
                 # Unparseable epoch — treat as missing
@@ -811,7 +811,7 @@ def _select_n2yo_fallback_ids(
     # Sort: None epochs (no TLE at all) go first, then oldest epoch first
     def _sort_key(item: tuple[int, datetime.datetime | None]) -> datetime.datetime:
         if item[1] is None:
-            return datetime.datetime.min.replace(tzinfo=datetime.timezone.utc)
+            return datetime.datetime.min.replace(tzinfo=datetime.UTC)
         return item[1]
 
     candidates.sort(key=_sort_key)
@@ -864,7 +864,7 @@ async def poll_once(
     session_cookie = await authenticate()
     tles = await fetch_tles(norad_ids, session_cookie)
 
-    fetched_at_utc = datetime.datetime.now(datetime.timezone.utc)
+    fetched_at_utc = datetime.datetime.now(datetime.UTC)
     st_inserted = cache_tles(db, tles, fetched_at_utc, source="space_track")
     n2yo_inserted = 0
 

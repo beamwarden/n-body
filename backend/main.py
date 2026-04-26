@@ -347,7 +347,7 @@ async def _run_conjunction_screening(app: FastAPI, screening_inputs: dict) -> No
         # Parse epoch string to UTC-aware datetime.
         screening_epoch_utc: datetime.datetime = datetime.datetime.strptime(
             screening_epoch_str, "%Y-%m-%dT%H:%M:%SZ"
-        ).replace(tzinfo=datetime.timezone.utc)
+        ).replace(tzinfo=datetime.UTC)
 
         # Build other_objects list from filter_states: include every non-anomalous
         # object that has last_tle_line1 and last_tle_line2 set.
@@ -1234,9 +1234,9 @@ async def get_object_track(
                 center_time.replace("Z", "+00:00")
             )
         except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid center_time format — use ISO 8601.")
+            raise HTTPException(status_code=400, detail="Invalid center_time format — use ISO 8601.") from None
     else:
-        reference_epoch_utc = datetime.datetime.now(tz=datetime.timezone.utc)
+        reference_epoch_utc = datetime.datetime.now(tz=datetime.UTC)
 
     # --- Backward track ---
     # Range: from -seconds_back up to (not including) 0, step step_s, then t=0.
@@ -1733,7 +1733,7 @@ async def websocket_live(websocket: WebSocket) -> None:
                 last_tle2: str | None = filter_state.get("last_tle_line2")
                 last_epoch: datetime.datetime | None = filter_state.get("last_epoch_utc")
                 if last_tle1 and last_tle2 and last_epoch:
-                    track_start = datetime.datetime.now(tz=datetime.timezone.utc)
+                    track_start = datetime.datetime.now(tz=datetime.UTC)
                     track_samples = await asyncio.to_thread(
                         processing.generate_track_samples,
                         tle_line1=last_tle1,
