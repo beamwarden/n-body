@@ -49,6 +49,15 @@ def _make_in_memory_db() -> sqlite3.Connection:
     db.commit()
     _ensure_state_history_table(db)
     anomaly.ensure_alerts_table(db)
+    db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS filter_active_anomaly (
+            norad_id       INTEGER PRIMARY KEY,
+            anomaly_row_id INTEGER NOT NULL
+        )
+        """
+    )
+    db.commit()
     return db
 
 

@@ -5,6 +5,33 @@ Most recent day first.
 
 ---
 
+## 2026-04-21 — Day 6
+
+### Globe visualization overhaul
+
+Paused ne-body to switch to beamwarden. Last state before pause:
+
+**MCP infrastructure (phases 1 & 2 complete):**
+- Phase 1: `mcp-memory-proxy` (project-scoped knowledge graph), Brave Search, and fetch servers registered and verified
+- Phase 2: filesystem, git, and `mcp-pipeline-tools` servers registered; ne-body pipelines wired; 50 unit tests passing
+
+**Globe fixes applied this session:**
+- Full-window layout — Cesium now fills entire viewport; side panel floats as semi-transparent overlay
+- Clock multiplier set to 30× so LEO orbital motion is clearly visible
+- Auto-rotation with pause-on-interaction (8s resume delay); locks off while an object is selected
+- `SampledPositionProperty` forward extrapolation changed from HOLD → EXTRAPOLATE so satellites keep moving after the initial 60-sample window
+- `flyToObject` uses `viewer.clock.currentTime` instead of `JulianDate.now()` to account for 30× clock
+- Track fetch passes `center_time` (Cesium clock time) to backend so historical/forward lines align with satellite's on-screen position
+- Backend: added `center_time` query param to `GET /object/{norad_id}/track`
+- Backend: WebSocket track burst now breaks immediately on first send failure instead of grinding through all objects
+- Makefile: all targets use `uv run` — no longer breaks when pyenv `.python-version` ≠ installed version
+
+**Open on ne-body at pause:**
+- Phase 3 (trading MCP server) not started
+- No known bugs at pause time
+
+---
+
 ## 2026-04-01 — Day 5
 
 ### Catalog rebuild: VLEO/low-LEO scope (≤600 km)

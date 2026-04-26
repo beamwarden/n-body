@@ -1,18 +1,18 @@
 .PHONY: backend frontend dev replay verify demo test lint fmt
 
-# Start the backend API server (port 8000)
+# Start the backend API server (port 8001)
 backend:
-	uvicorn backend.main:app --host 0.0.0.0 --port 8001 --reload
+	uv run uvicorn backend.main:app --host 0.0.0.0 --port 8001 --reload
 
 # Start the frontend static server (port 8080)
 frontend:
-	cd frontend && python -m http.server 8080
+	cd frontend && uv run python -m http.server 8080
 
 # Start both in parallel (Ctrl-C kills both)
 dev:
 	@trap 'kill %1 %2 2>/dev/null' INT; \
-	uvicorn backend.main:app --host 0.0.0.0 --port 8001 --reload & \
-	(cd frontend && python -m http.server 8080) & \
+	uv run uvicorn backend.main:app --host 0.0.0.0 --port 8001 --reload & \
+	(cd frontend && uv run python -m http.server 8080) & \
 	wait
 
 # Rebuild TLE cache (run before first demo after catalog change)
@@ -45,6 +45,8 @@ reload-catalog:
 
 # Run unit tests (mirrors ci-develop gate)
 test:
+	uv run ruff check backend/ tests/
+	uv run ruff format --check backend/ tests/
 	uv run pytest -m unit -v --tb=short
 
 # Run all tests including integration (requires running backend)
