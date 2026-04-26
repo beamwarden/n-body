@@ -19,6 +19,16 @@ from numpy.typing import NDArray
 # Chi-squared critical value for 6 DOF at p=0.05 (per F-030)
 CHI2_THRESHOLD_6DOF: float = 12.592
 
+# Expected NIS for a 6-DOF chi-squared distribution (mean = degrees of freedom).
+# Used as the denominator in the adaptive Q scale ratio.
+NIS_EXPECTED_6DOF: float = 6.0
+
+# Adaptive Q tuning (H-6): innovation covariance matching.
+# Scale is clamped so Q can't collapse to zero or grow unbounded.
+Q_ADAPT_MIN_SAMPLES: int = 5   # observations required before adapting
+Q_ADAPT_SCALE_MIN: float = 0.1
+Q_ADAPT_SCALE_MAX: float = 10.0
+
 # Object class identifiers for Q matrix selection (F-024)
 OBJECT_CLASS_DEBRIS: str = "debris"
 OBJECT_CLASS_ACTIVE: str = "active_satellite"
@@ -26,7 +36,8 @@ OBJECT_CLASS_ROCKET_BODY: str = "rocket_body"
 
 # Process noise matrices Q per object class (F-024).
 # Units: km^2 for position blocks, (km/s)^2 for velocity blocks.
-# Hand-tuned for POC; see POST-002 for adaptive noise estimation.
+# These are base values. adapt_process_noise() scales them per-object after each
+# update using innovation covariance matching (H-6, POST-002).
 # Position variance: diagonal scaled by assumed unmodeled acceleration over
 # a 30-minute update interval. Velocity variance: smaller, reflecting that
 # unmodeled forces accumulate primarily in velocity over short intervals.
@@ -285,6 +296,40 @@ def compute_nis(
         s_inv = np.linalg.inv(innovation_covariance_km2)
     nis_val: float = float(innovation_eci_km @ s_inv @ innovation_eci_km)
     return nis_val
+
+
+def adapt_process_noise(filter_state: dict) -> None:
+    """Scale the process noise matrix Q using innovation covariance matching (H-6).
+
+    Computes the ratio of observed mean NIS to the expected NIS for a 6-DOF
+    chi-squared distribution and uses it as a multiplicative scale on the
+    per-object base Q matrix. This drives Q up when the filter is overconfident
+    (mean NIS > 6) and down when it is underconfident (mean NIS < 6).
+
+    The base Q is stored on first call and used as the scaling reference so the
+    adaptation does not compound across successive calls. Scale is clamped to
+    [Q_ADAPT_SCALE_MIN, Q_ADAPT_SCALE_MAX] to prevent runaway.
+
+    No-op if the NIS history has fewer than Q_ADAPT_MIN_SAMPLES entries.
+
+    Args:
+        filter_state: Filter state dict from init_filter / update. Modified in place.
+    """
+    nis_history: list[float] = filter_state.get("nis_history", [])
+    if len(nis_history) < Q_ADAPT_MIN_SAMPLES:
+        return
+
+    if "_base_q_matrix" not in filter_state:
+        filter_state["_base_q_matrix"] = filter_state["q_matrix"].copy()
+
+    base_q: NDArray[np.float64] = filter_state["_base_q_matrix"]
+    mean_nis: float = float(np.mean(nis_history))
+    scale: float = float(np.clip(mean_nis / NIS_EXPECTED_6DOF, Q_ADAPT_SCALE_MIN, Q_ADAPT_SCALE_MAX))
+
+    new_q: NDArray[np.float64] = base_q * scale
+    filter_state["q_matrix"] = new_q
+    filter_state["filter"].Q = new_q.copy()
+    filter_state["_q_scale"] = scale
 
 
 def get_state(filter_state: dict) -> dict:

@@ -335,3 +335,78 @@ def test_full_update_cycle_with_real_propagator() -> None:
     assert fs["nis"] < CHI2_THRESHOLD_6DOF, (
         f"Integration test: NIS {fs['nis']:.3f} exceeded threshold {CHI2_THRESHOLD_6DOF} for consistent filter"
     )
+
+
+# ---------------------------------------------------------------------------
+# adapt_process_noise tests (H-6)
+# ---------------------------------------------------------------------------
+
+
+def _make_filter_with_nis_history(nis_values: list[float]) -> dict:
+    """Return an initialised filter state with a preset NIS history."""
+    fs = kalman.init_filter(ISS_STATE, T0)
+    fs["nis_history"] = list(nis_values)
+    return fs
+
+
+def test_adapt_process_noise_noop_below_min_samples() -> None:
+    """No Q change when NIS history is shorter than Q_ADAPT_MIN_SAMPLES."""
+    fs = _make_filter_with_nis_history([6.0] * (kalman.Q_ADAPT_MIN_SAMPLES - 1))
+    original_q = fs["q_matrix"].copy()
+    kalman.adapt_process_noise(fs)
+    np.testing.assert_array_equal(fs["q_matrix"], original_q)
+    assert "_q_scale" not in fs
+
+
+def test_adapt_process_noise_inflates_q_when_nis_high() -> None:
+    """Q is scaled up when mean NIS exceeds the 6-DOF expected value."""
+    # mean NIS = 12.0 → scale = 12/6 = 2.0
+    fs = _make_filter_with_nis_history([12.0] * kalman.Q_ADAPT_MIN_SAMPLES)
+    base_q = fs["q_matrix"].copy()
+    kalman.adapt_process_noise(fs)
+    assert fs["_q_scale"] == pytest.approx(2.0, rel=1e-6)
+    np.testing.assert_allclose(fs["q_matrix"], base_q * 2.0)
+    np.testing.assert_allclose(fs["filter"].Q, base_q * 2.0)
+
+
+def test_adapt_process_noise_deflates_q_when_nis_low() -> None:
+    """Q is scaled down when mean NIS is below the expected value."""
+    # mean NIS = 3.0 → scale = 3/6 = 0.5
+    fs = _make_filter_with_nis_history([3.0] * kalman.Q_ADAPT_MIN_SAMPLES)
+    base_q = fs["q_matrix"].copy()
+    kalman.adapt_process_noise(fs)
+    assert fs["_q_scale"] == pytest.approx(0.5, rel=1e-6)
+    np.testing.assert_allclose(fs["q_matrix"], base_q * 0.5)
+
+
+def test_adapt_process_noise_clamps_scale_at_max() -> None:
+    """Scale is clamped to Q_ADAPT_SCALE_MAX even for very high NIS."""
+    # mean NIS = 600 → raw scale 100, clamped to 10
+    fs = _make_filter_with_nis_history([600.0] * kalman.Q_ADAPT_MIN_SAMPLES)
+    kalman.adapt_process_noise(fs)
+    assert fs["_q_scale"] == pytest.approx(kalman.Q_ADAPT_SCALE_MAX, rel=1e-6)
+
+
+def test_adapt_process_noise_clamps_scale_at_min() -> None:
+    """Scale is clamped to Q_ADAPT_SCALE_MIN even for near-zero NIS."""
+    # mean NIS = 0.0 → raw scale 0, clamped to 0.1
+    fs = _make_filter_with_nis_history([0.0] * kalman.Q_ADAPT_MIN_SAMPLES)
+    kalman.adapt_process_noise(fs)
+    assert fs["_q_scale"] == pytest.approx(kalman.Q_ADAPT_SCALE_MIN, rel=1e-6)
+
+
+def test_adapt_process_noise_does_not_compound() -> None:
+    """Calling adapt twice with same NIS history yields the same Q (non-compounding)."""
+    fs = _make_filter_with_nis_history([12.0] * kalman.Q_ADAPT_MIN_SAMPLES)
+    kalman.adapt_process_noise(fs)
+    q_after_first = fs["q_matrix"].copy()
+    kalman.adapt_process_noise(fs)
+    np.testing.assert_allclose(fs["q_matrix"], q_after_first)
+
+
+def test_adapt_process_noise_updates_filter_q_attribute() -> None:
+    """The FilterPy UKF object's Q attribute is updated in sync with filter_state."""
+    fs = _make_filter_with_nis_history([6.0] * kalman.Q_ADAPT_MIN_SAMPLES)
+    kalman.adapt_process_noise(fs)
+    # scale = 1.0, Q unchanged — but filter.Q must equal filter_state["q_matrix"]
+    np.testing.assert_allclose(fs["filter"].Q, fs["q_matrix"])
