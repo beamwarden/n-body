@@ -5,6 +5,51 @@ Most recent day first.
 
 ---
 
+## 2026-04-26 — Day 7
+
+### Production hardening — COA1 (H-3 through H-6) + CI stabilization
+
+Implemented the remaining four items from the COA1 production hardening plan and drove the branch through CI to a clean merge into `develop`.
+
+**H-3: Space-Track HTTP 429 backoff (`backend/ingest.py`)**
+- Retry loop with configurable constants: `_ST_429_MAX_RETRIES=4`, initial backoff 5s, max 300s
+- Parses `Retry-After` header if present; falls back to exponential backoff
+- Exhausted retries return `[]` — skips the poll cycle cleanly, no crash
+
+**H-4: API key auth (`backend/main.py`)**
+- `_ApiKeyMiddleware(BaseHTTPMiddleware)` checks `Authorization: Bearer <key>` or `?key=` query param
+- WebSocket manually checks `?key=` before accept; closes 1008 on failure
+- `/config` and OPTIONS requests exempt
+- Auth is a no-op when `NEBODY_API_KEY` env var is unset (dev default)
+
+**H-5: Configurable CORS origins (`backend/main.py`)**
+- `NEBODY_ALLOWED_ORIGINS` env var (comma-separated); falls back to `["*"]` if unset
+
+**H-6: Adaptive UKF process noise Q (`backend/kalman.py`, `backend/processing.py`)**
+- Innovation covariance matching: `scale = clip(mean_nis / 6.0, 0.1, 10.0)`
+- Applied to `_base_q_matrix` (non-compounding); stored separately to prevent drift
+- Triggered after `Q_ADAPT_MIN_SAMPLES=5` observations
+- Called from `processing.py` after each `kalman.update()`
+
+**CI stabilization (3 rounds of fixes after PR submission):**
+- `ruff check` UP017: replaced `datetime.timezone.utc` → `datetime.UTC` throughout all backend files (project targets Python 3.11+)
+- `ruff check` B904: added `from None` to bare re-raise inside `except ValueError` in `main.py`
+- `ruff format --check`: reformatted `kalman.py`, `main.py`, `tests/test_main.py`
+- `make test` now gates on `ruff check` + `ruff format --check` before pytest — CI and local in lockstep
+
+**httpx timeout fix (`backend/ingest.py`)**
+- Added `_HTTP_TIMEOUT = httpx.Timeout(connect=10s, read=30s)` applied to all three `httpx.AsyncClient` usages
+- Root cause: integration tests use `TestClient(app)` which triggers the lifespan and starts `_ingest_loop_task`; without credentials the login POST to Space-Track hung indefinitely, blocking test teardown and causing the CI integration job to never complete
+
+**Branch / merge flow:**
+- `fix/ci-node24-actions` → `develop` (PR #6)
+- `develop` had fallen 1 commit behind `main` (PR #4 merge); synced via `sync/develop-from-main` (PR #7)
+- `develop` → `main` (PR #5) unblocked after sync
+
+**Tests:** 101 unit tests passing; `make test` clean (ruff check + format + pytest)
+
+---
+
 ## 2026-04-21 — Day 6
 
 ### Globe visualization overhaul
