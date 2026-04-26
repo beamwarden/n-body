@@ -463,6 +463,72 @@ def get_active_anomalies(db: sqlite3.Connection) -> list[dict]:
     return results
 
 
+def persist_active_anomaly(
+    db: sqlite3.Connection,
+    norad_id: int,
+    anomaly_row_id: int,
+) -> None:
+    """Record that norad_id has an unresolved anomaly whose alerts row is anomaly_row_id.
+
+    Survives server restarts: main.py reads this table during warm startup to
+    restore _anomaly_row_id in filter_states so record_recalibration_complete
+    can be called on the next clean update cycle.
+
+    Args:
+        db: Open SQLite connection.
+        norad_id: NORAD catalog ID.
+        anomaly_row_id: Row ID from record_anomaly.
+    """
+    db.execute(
+        "INSERT OR REPLACE INTO filter_active_anomaly (norad_id, anomaly_row_id) VALUES (?, ?)",
+        (norad_id, anomaly_row_id),
+    )
+    db.commit()
+
+
+def clear_active_anomaly(
+    db: sqlite3.Connection,
+    norad_id: int,
+) -> None:
+    """Remove norad_id's active-anomaly tracking entry after successful resolution.
+
+    Args:
+        db: Open SQLite connection.
+        norad_id: NORAD catalog ID.
+    """
+    db.execute("DELETE FROM filter_active_anomaly WHERE norad_id = ?", (norad_id,))
+    db.commit()
+
+
+def load_active_anomalies(db: sqlite3.Connection) -> dict[int, dict]:
+    """Return persisted active-anomaly state keyed by norad_id.
+
+    Joins filter_active_anomaly with alerts to recover detection_epoch_utc,
+    which is needed to restore _anomaly_detection_epoch_utc in filter_states.
+
+    Args:
+        db: Open SQLite connection.
+
+    Returns:
+        Dict mapping norad_id -> {"anomaly_row_id": int, "detection_epoch_utc": datetime}.
+    """
+    rows = db.execute(
+        """
+        SELECT f.norad_id, f.anomaly_row_id, a.detection_epoch_utc
+        FROM filter_active_anomaly f
+        JOIN alerts a ON a.id = f.anomaly_row_id
+        """
+    ).fetchall()
+    result: dict[int, dict] = {}
+    for row in rows:
+        norad_id, anomaly_row_id, detection_epoch_str = row[0], row[1], row[2]
+        result[norad_id] = {
+            "anomaly_row_id": anomaly_row_id,
+            "detection_epoch_utc": datetime.datetime.fromisoformat(detection_epoch_str),
+        }
+    return result
+
+
 def dismiss_alert(
     db: sqlite3.Connection,
     norad_id: int,

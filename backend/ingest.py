@@ -139,7 +139,7 @@ def init_catalog_db(db_path: str) -> sqlite3.Connection:
     if db_dir:
         os.makedirs(db_dir, exist_ok=True)
 
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute(
@@ -163,6 +163,15 @@ def init_catalog_db(db_path: str) -> sqlite3.Connection:
     if "source" not in existing_cols:
         conn.execute("ALTER TABLE tle_catalog ADD COLUMN source TEXT NOT NULL DEFAULT 'space_track'")
         logger.info("DB migration: added 'source' column to tle_catalog")
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS filter_active_anomaly (
+            norad_id      INTEGER PRIMARY KEY,
+            anomaly_row_id INTEGER NOT NULL
+        )
+        """
+    )
 
     conn.commit()
     logger.debug("Catalog DB initialized at %s", db_path)

@@ -615,6 +615,40 @@ async def lifespan(app: FastAPI):
             logger.warning("warm startup: failed for NORAD %d: %s", _nid, exc)
     logger.info("Warm startup complete: %d objects initialized.", warm_count)
 
+    # Restore persisted anomaly tracking into filter_states.
+    # Warm startup runs process_single_object without _anomaly_row_id, so the
+    # resolution branch can't fire if the anomaly already cleared.  Restoring
+    # here means the NEXT ingest cycle will correctly call
+    # record_recalibration_complete rather than leaving the alert active forever.
+    persisted: dict[int, dict] = anomaly.load_active_anomalies(db)
+    restored_count: int = 0
+    for _nid, _state in persisted.items():
+        if _nid in app.state.filter_states and "_anomaly_row_id" not in app.state.filter_states[_nid]:
+            app.state.filter_states[_nid]["_anomaly_row_id"] = _state["anomaly_row_id"]
+            app.state.filter_states[_nid]["_anomaly_detection_epoch_utc"] = _state["detection_epoch_utc"]
+            restored_count += 1
+    if restored_count:
+        logger.info("Restored _anomaly_row_id for %d objects from DB.", restored_count)
+
+    # Orphan migration: resolve active alerts that have no filter_active_anomaly
+    # entry and are older than 2 hours.  These were orphaned by prior restarts
+    # before this fix was deployed.
+    db.execute(
+        """
+        UPDATE alerts
+        SET status = 'resolved',
+            resolution_epoch_utc = datetime('now'),
+            recalibration_duration_s = NULL
+        WHERE status = 'active'
+          AND norad_id NOT IN (SELECT norad_id FROM filter_active_anomaly)
+          AND detection_epoch_utc < datetime('now', '-2 hours')
+        """
+    )
+    orphan_count: int = db.execute("SELECT changes()").fetchone()[0]
+    db.commit()
+    if orphan_count:
+        logger.info("Orphan migration: resolved %d stale active alerts.", orphan_count)
+
     yield
 
     # --- SHUTDOWN ---
