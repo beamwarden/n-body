@@ -24,3 +24,4 @@ build/
 # IDE
 .vscode/
 .idea/
+mcp-server-plan.md

@@ -37,9 +37,22 @@ from dotenv import load_dotenv
 
 load_dotenv()  # load .env from repo root (no-op if file absent or vars already set)
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+# H-4: optional API key auth. Set NEBODY_API_KEY in .env to enable.
+# If unset, all endpoints are unauthenticated (dev / local-demo default).
+_API_KEY: str | None = os.environ.get("NEBODY_API_KEY") or None
+
+# H-5: configurable CORS origins. Set NEBODY_ALLOWED_ORIGINS to a comma-separated
+# list of allowed origins (e.g. "http://keep-0001.local:3000,http://localhost:3000").
+# Falls back to ["*"] if unset so dev and existing deployments are unaffected.
+_ALLOWED_ORIGINS: list[str] = [
+    o.strip() for o in os.environ.get("NEBODY_ALLOWED_ORIGINS", "").split(",") if o.strip()
+] or ["*"]
+
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from starlette.middleware.base import BaseHTTPMiddleware
 
 import backend.anomaly as anomaly
 import backend.conjunction as conjunction
@@ -266,6 +279,34 @@ class ConnectionManager:
 
 # Module-level connection manager instance (accessed by endpoint and background task).
 ws_manager = ConnectionManager()
+
+
+class _ApiKeyMiddleware(BaseHTTPMiddleware):
+    """Enforce NEBODY_API_KEY on all HTTP endpoints except /config and CORS preflight.
+
+    Accepts the key as a Bearer token (Authorization: Bearer <key>) or as a
+    ?key=<key> query parameter. WebSocket auth is handled separately in the
+    websocket_live endpoint handler (middleware does not intercept WS upgrades).
+
+    If NEBODY_API_KEY is not set, all requests are allowed through unchanged.
+    """
+
+    _EXEMPT_PATHS: frozenset[str] = frozenset({"/config", "/docs", "/openapi.json", "/redoc"})
+
+    async def dispatch(self, request: Request, call_next):  # type: ignore[override]
+        if _API_KEY is None or request.url.path in self._EXEMPT_PATHS:
+            return await call_next(request)
+        # Allow CORS preflight through so the CORSMiddleware can respond correctly.
+        if request.method == "OPTIONS":
+            return await call_next(request)
+        # Bearer token
+        auth: str | None = request.headers.get("Authorization")
+        if auth and auth.startswith("Bearer ") and auth[7:] == _API_KEY:
+            return await call_next(request)
+        # ?key= query parameter (useful for browser-initiated fetches and WS polyfills)
+        if request.query_params.get("key") == _API_KEY:
+            return await call_next(request)
+        return JSONResponse({"detail": "Unauthorized"}, status_code=401)
 
 
 # _build_ws_message is imported from backend.processing above.
@@ -615,6 +656,40 @@ async def lifespan(app: FastAPI):
             logger.warning("warm startup: failed for NORAD %d: %s", _nid, exc)
     logger.info("Warm startup complete: %d objects initialized.", warm_count)
 
+    # Restore persisted anomaly tracking into filter_states.
+    # Warm startup runs process_single_object without _anomaly_row_id, so the
+    # resolution branch can't fire if the anomaly already cleared.  Restoring
+    # here means the NEXT ingest cycle will correctly call
+    # record_recalibration_complete rather than leaving the alert active forever.
+    persisted: dict[int, dict] = anomaly.load_active_anomalies(db)
+    restored_count: int = 0
+    for _nid, _state in persisted.items():
+        if _nid in app.state.filter_states and "_anomaly_row_id" not in app.state.filter_states[_nid]:
+            app.state.filter_states[_nid]["_anomaly_row_id"] = _state["anomaly_row_id"]
+            app.state.filter_states[_nid]["_anomaly_detection_epoch_utc"] = _state["detection_epoch_utc"]
+            restored_count += 1
+    if restored_count:
+        logger.info("Restored _anomaly_row_id for %d objects from DB.", restored_count)
+
+    # Orphan migration: resolve active alerts that have no filter_active_anomaly
+    # entry and are older than 2 hours.  These were orphaned by prior restarts
+    # before this fix was deployed.
+    db.execute(
+        """
+        UPDATE alerts
+        SET status = 'resolved',
+            resolution_epoch_utc = datetime('now'),
+            recalibration_duration_s = NULL
+        WHERE status = 'active'
+          AND norad_id NOT IN (SELECT norad_id FROM filter_active_anomaly)
+          AND detection_epoch_utc < datetime('now', '-2 hours')
+        """
+    )
+    orphan_count: int = db.execute("SELECT changes()").fetchone()[0]
+    db.commit()
+    if orphan_count:
+        logger.info("Orphan migration: resolved %d stale active alerts.", orphan_count)
+
     yield
 
     # --- SHUTDOWN ---
@@ -642,13 +717,13 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Allow the frontend dev server (port 8080) to call the backend (port 8001).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8080", "http://127.0.0.1:8080"],
+    allow_origins=_ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(_ApiKeyMiddleware)
 
 
 # ---------------------------------------------------------------------------
@@ -1092,6 +1167,7 @@ async def get_object_track(
     # Plan decision 1 sets default step_s = 60 (not 30). Implemented as 60 here.
     # Tech debt entry TD-025 added for UI configurability (post-POC).
     step_s: int = 60,
+    center_time: str | None = None,
 ) -> dict:
     """Return historical and predictive track points for one tracked object.
 
@@ -1148,9 +1224,16 @@ async def get_object_track(
     tle_line1: str = tle_record["tle_line1"]
     tle_line2: str = tle_record["tle_line2"]
 
-    # Reference epoch is always now so the track is centered on the current
-    # satellite position, matching the SampledPositionProperty animation window.
-    reference_epoch_utc: datetime.datetime = datetime.datetime.now(tz=datetime.UTC)
+    # Reference epoch defaults to now but accepts a caller-supplied center_time
+    # so the frontend can align the track with the Cesium clock (which may run
+    # faster than real time due to clock.multiplier > 1).
+    if center_time is not None:
+        try:
+            reference_epoch_utc = datetime.datetime.fromisoformat(center_time.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid center_time format — use ISO 8601.") from None
+    else:
+        reference_epoch_utc = datetime.datetime.now(tz=datetime.UTC)
 
     # --- Backward track ---
     # Range: from -seconds_back up to (not including) 0, step step_s, then t=0.
@@ -1599,6 +1682,15 @@ async def websocket_live(websocket: WebSocket) -> None:
     {type, norad_id, epoch_utc, eci_km, eci_km_s,
      covariance_diagonal_km2, nis, confidence, anomaly_type}
     """
+    # H-4: API key auth check before accepting. Close 1008 (Policy Violation) if key is
+    # required but missing or wrong. Pass ?key=<value> as a query parameter on the WS URL.
+    if _API_KEY is not None:
+        ws_key: str | None = websocket.query_params.get("key")
+        if ws_key != _API_KEY:
+            await websocket.close(code=1008)
+            logger.warning("WebSocket connection rejected: missing or invalid API key")
+            return
+
     # Enforce connection cap before accepting (returns 503 to client).
     if ws_manager.active_count() >= MAX_WS_CONNECTIONS:
         await websocket.close(code=1013)  # 1013: Try Again Later
@@ -1658,6 +1750,7 @@ async def websocket_live(websocket: WebSocket) -> None:
                     norad_id,
                     exc,
                 )
+                break  # Connection is dead — stop the burst immediately.
 
         # Keepalive receive loop — content is ignored.
         while True:

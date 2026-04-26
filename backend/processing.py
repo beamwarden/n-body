@@ -386,6 +386,9 @@ def process_single_object(
     # Update step: incorporate new observation.
     kalman.update(filter_state, observation_eci_km, epoch_utc)
 
+    # H-6: adapt Q based on NIS history (no-op until Q_ADAPT_MIN_SAMPLES reached).
+    kalman.adapt_process_noise(filter_state)
+
     nis_val: float = filter_state["nis"]
     nis_history: list = filter_state["nis_history"]
     innovation_eci_km_list: list = filter_state["innovation_eci_km"].tolist()
@@ -484,6 +487,7 @@ def process_single_object(
         # Track this anomaly row for recalibration-complete detection.
         filter_state["_anomaly_row_id"] = pending_row_id
         filter_state["_anomaly_detection_epoch_utc"] = pending_epoch
+        anomaly.persist_active_anomaly(db, norad_id, pending_row_id)
 
         # Anomaly WS message: use cycle-1 NIS/innovation (the actual detection).
         anomaly_ws_message = _build_ws_message(
@@ -610,6 +614,7 @@ def process_single_object(
 
             filter_state["_anomaly_row_id"] = anomaly_row_id
             filter_state["_anomaly_detection_epoch_utc"] = epoch_utc
+            anomaly.persist_active_anomaly(db, norad_id, anomaly_row_id)
 
             anomaly_ws_message = _build_ws_message(
                 norad_id=norad_id,
@@ -661,6 +666,7 @@ def process_single_object(
                     anomaly_row_id=anomaly_row_id_pending,
                     resolution_epoch_utc=epoch_utc,
                 )
+                anomaly.clear_active_anomaly(db, norad_id)
                 logger.info(
                     "NORAD %d recalibration complete, row_id=%d",
                     norad_id,

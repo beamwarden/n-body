@@ -150,17 +150,55 @@ export function initGlobe(containerId, ionToken) {
         // TD-026: add globe imagery selection to UI or config (post-POC).
     });
 
-    // Configure Cesium clock for real-time animation of SampledPositionProperty.
+    // Configure Cesium clock for accelerated animation of SampledPositionProperty.
+    // 60x makes LEO orbital motion (7.5 km/s) clearly visible at full-Earth scale.
     // The timeline and animation widgets are disabled above, so the clock drives
     // interpolation only — no visible widget changes result from these settings.
     viewer.clock.shouldAnimate = true;
     viewer.clock.clockRange = Cesium.ClockRange.UNBOUNDED;
-    viewer.clock.multiplier = 1.0;
+    viewer.clock.multiplier = 30.0;
     viewer.clock.currentTime = Cesium.JulianDate.now();
 
+    // Auto-rotate the globe. Pauses on user interaction and resumes 3s after
+    // the last mouse/touch event so the view stays live during a demo.
+    viewer.scene.screenSpaceCameraController.enableRotate = true;
+    let _autoRotateTimeout = null;
+    let _autoRotating = true;
+    let _autoRotateLocked = false;  // true while an object is selected
+
+    viewer.scene.preUpdate.addEventListener(() => {
+        if (_autoRotating && !_autoRotateLocked) {
+            viewer.scene.camera.rotate(Cesium.Cartesian3.UNIT_Z, 0.00008);
+        }
+    });
+
+    const _pauseAutoRotate = () => {
+        _autoRotating = false;
+        if (_autoRotateTimeout) clearTimeout(_autoRotateTimeout);
+        if (!_autoRotateLocked) {
+            _autoRotateTimeout = setTimeout(() => { _autoRotating = true; }, 8000);
+        }
+    };
+
+    viewer.scene.canvas.addEventListener('mousedown', _pauseAutoRotate);
+    viewer.scene.canvas.addEventListener('touchstart', _pauseAutoRotate);
+
+    // Exposed so main.js can lock/unlock rotation when selection changes.
+    viewer._setAutoRotateLocked = (locked) => {
+        _autoRotateLocked = locked;
+        if (!locked) {
+            _autoRotating = false;
+            if (_autoRotateTimeout) clearTimeout(_autoRotateTimeout);
+            _autoRotateTimeout = setTimeout(() => { _autoRotating = true; }, 8000);
+        } else {
+            _autoRotating = false;
+            if (_autoRotateTimeout) clearTimeout(_autoRotateTimeout);
+        }
+    };
+
     // Set initial camera to full-Earth view
-    viewer.camera.flyTo({
-        destination: Cesium.Cartesian3.fromDegrees(0, 0, 35000000),
+    viewer.camera.setView({
+        destination: Cesium.Cartesian3.fromDegrees(0, 20, 35000000),
     });
 
     return viewer;
@@ -198,7 +236,7 @@ export function applySampledTrack(viewer, trackUpdate) {
         interpolationDegree: 5,
         interpolationAlgorithm: Cesium.LagrangePolynomialApproximation,
     });
-    sampledPosition.forwardExtrapolationType = Cesium.ExtrapolationType.HOLD;
+    sampledPosition.forwardExtrapolationType = Cesium.ExtrapolationType.EXTRAPOLATE;
     sampledPosition.backwardExtrapolationType = Cesium.ExtrapolationType.HOLD;
 
     for (const sample of samples) {
@@ -468,19 +506,23 @@ export function removeSatelliteEntity(viewer, noradId) {
 export function flyToObject(viewer, noradId) {
     const entity = entityMap.get(noradId);
     if (!entity) return;
-    const position = entity.position.getValue(Cesium.JulianDate.now());
+    const position = entity.position.getValue(viewer.clock.currentTime);
     if (!position) return;
-    // Build an explicit BoundingSphere at the satellite position so the
-    // 800 km range is respected. viewer.flyTo() on a billboard entity
-    // computes a near-zero bounding sphere and ignores the range offset;
-    // flyToBoundingSphere with an explicit sphere is the correct API.
-    const sphere = new Cesium.BoundingSphere(position, 1000);
-    viewer.camera.flyToBoundingSphere(sphere, {
-        offset: new Cesium.HeadingPitchRange(
-            0,
-            Cesium.Math.toRadians(-30),
-            4500000,  // 4,500 km from satellite (~5,000 km above surface) — continental scale
+    // Convert ECEF position to geodetic to get lon/lat, then fly straight down
+    // from 10,000 km above the satellite's ground track. Avoids the camera
+    // ending up below Earth's surface that occurs with BoundingSphere + low pitch.
+    const carto = Cesium.Cartographic.fromCartesian(position);
+    viewer.camera.flyTo({
+        destination: Cesium.Cartesian3.fromRadians(
+            carto.longitude,
+            carto.latitude,
+            10000000,  // 10,000 km above surface — shows Earth + region
         ),
+        orientation: {
+            heading: 0,
+            pitch: Cesium.Math.toRadians(-90),  // straight down
+            roll: 0,
+        },
         duration: 1.5,
     });
 }

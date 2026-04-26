@@ -28,6 +28,11 @@ import httpx
 # F-002: 30-minute poll interval
 POLL_INTERVAL_S: int = 1800
 
+# Space-Track HTTP 429 rate-limit retry policy (H-3)
+_ST_429_MAX_RETRIES: int = 4
+_ST_429_INITIAL_BACKOFF_S: float = 5.0
+_ST_429_MAX_BACKOFF_S: float = 300.0
+
 # Space-Track.org API endpoints
 _SPACETRACK_BASE_URL: str = "https://www.space-track.org"
 _SPACETRACK_LOGIN_URL: str = f"{_SPACETRACK_BASE_URL}/ajaxauth/login"
@@ -139,7 +144,10 @@ def init_catalog_db(db_path: str) -> sqlite3.Connection:
     if db_dir:
         os.makedirs(db_dir, exist_ok=True)
 
-    conn = sqlite3.connect(db_path)
+    # check_same_thread=False is safe here because WAL mode (set below) allows
+    # concurrent readers alongside the single writer. Without WAL, sharing a
+    # connection across threads would risk journal corruption.
+    conn = sqlite3.connect(db_path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute(
@@ -163,6 +171,15 @@ def init_catalog_db(db_path: str) -> sqlite3.Connection:
     if "source" not in existing_cols:
         conn.execute("ALTER TABLE tle_catalog ADD COLUMN source TEXT NOT NULL DEFAULT 'space_track'")
         logger.info("DB migration: added 'source' column to tle_catalog")
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS filter_active_anomaly (
+            norad_id      INTEGER PRIMARY KEY,
+            anomaly_row_id INTEGER NOT NULL
+        )
+        """
+    )
 
     conn.commit()
     logger.debug("Catalog DB initialized at %s", db_path)
@@ -456,8 +473,40 @@ async def fetch_tles(norad_ids: list[int], session_cookie: str) -> list[dict]:
 
     headers = {"Cookie": session_cookie}
 
+    backoff_s: float = _ST_429_INITIAL_BACKOFF_S
+    response: httpx.Response
+
     async with httpx.AsyncClient(follow_redirects=True) as client:
-        response = await client.get(url, headers=headers)
+        for attempt in range(_ST_429_MAX_RETRIES + 1):
+            response = await client.get(url, headers=headers)
+
+            if response.status_code != 429:
+                break
+
+            if attempt == _ST_429_MAX_RETRIES:
+                logger.warning(
+                    "Space-Track rate limit (HTTP 429): max retries (%d) exhausted — skipping poll cycle",
+                    _ST_429_MAX_RETRIES,
+                )
+                return []
+
+            # Respect Retry-After header; fall back to exponential backoff.
+            wait_s: float = backoff_s
+            retry_after: str | None = response.headers.get("Retry-After")
+            if retry_after is not None:
+                try:
+                    wait_s = max(float(retry_after), 1.0)
+                except ValueError:
+                    pass
+
+            logger.warning(
+                "Space-Track rate limit (HTTP 429): attempt %d/%d — waiting %.0fs before retry",
+                attempt + 1,
+                _ST_429_MAX_RETRIES,
+                wait_s,
+            )
+            await asyncio.sleep(wait_s)
+            backoff_s = min(backoff_s * 2, _ST_429_MAX_BACKOFF_S)
 
     logger.info(
         "F-006 SPACETRACK_API_RESPONSE timestamp=%s endpoint=%s status=%d content_length=%d",

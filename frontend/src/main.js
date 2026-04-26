@@ -178,6 +178,7 @@ export function routeMessage(message) {
         if (panelState) {
             addAlert(panelState, message, nameMap, (clickedId) => {
                 selectedNoradId = clickedId;
+                if (viewer._setAutoRotateLocked) viewer._setAutoRotateLocked(true);
                 if (chartState) selectObject(chartState, clickedId);
                 _showObjectInfoPanel(clickedId);
                 _setChartVisible(true);
@@ -527,7 +528,9 @@ async function _fetchAndDrawTrack(noradId) {
     if (viewer) clearTrackAndCone(viewer);
 
     try {
-        const url = `${backendBaseUrl}/object/${noradId}/track?seconds_back=1500&seconds_forward=1500`;
+        const cesiumNow = viewer ? Cesium.JulianDate.toIso8601(viewer.clock.currentTime) : null;
+        const centerParam = cesiumNow ? `&center_time=${encodeURIComponent(cesiumNow)}` : '';
+        const url = `${backendBaseUrl}/object/${noradId}/track?seconds_back=1500&seconds_forward=1500${centerParam}`;
         const response = await fetch(url);
         if (!response.ok) {
             console.warn('[main] GET track returned', response.status, 'for NORAD', noradId);
@@ -900,6 +903,7 @@ export async function initApp() {
     // Step 15: _showObjectInfoPanel called here alongside selectObject.
     setupSelectionHandler(viewer, (noradId) => {
         selectedNoradId = noradId;
+        if (viewer._setAutoRotateLocked) viewer._setAutoRotateLocked(noradId !== null);
         if (chartState) {
             selectObject(chartState, noradId);
         }
