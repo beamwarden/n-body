@@ -33,6 +33,10 @@ _ST_429_MAX_RETRIES: int = 4
 _ST_429_INITIAL_BACKOFF_S: float = 5.0
 _ST_429_MAX_BACKOFF_S: float = 300.0
 
+# httpx timeout applied to all outbound Space-Track / N2YO requests.
+# Prevents integration test hangs and guards against CI network stalls.
+_HTTP_TIMEOUT: httpx.Timeout = httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=5.0)
+
 # Space-Track.org API endpoints
 _SPACETRACK_BASE_URL: str = "https://www.space-track.org"
 _SPACETRACK_LOGIN_URL: str = f"{_SPACETRACK_BASE_URL}/ajaxauth/login"
@@ -407,7 +411,7 @@ async def authenticate() -> str:
         _SPACETRACK_LOGIN_URL,
     )
 
-    async with httpx.AsyncClient(follow_redirects=True) as client:
+    async with httpx.AsyncClient(follow_redirects=True, timeout=_HTTP_TIMEOUT) as client:
         response = await client.post(_SPACETRACK_LOGIN_URL, data=login_payload)
 
     logger.info(
@@ -476,7 +480,7 @@ async def fetch_tles(norad_ids: list[int], session_cookie: str) -> list[dict]:
     backoff_s: float = _ST_429_INITIAL_BACKOFF_S
     response: httpx.Response
 
-    async with httpx.AsyncClient(follow_redirects=True) as client:
+    async with httpx.AsyncClient(follow_redirects=True, timeout=_HTTP_TIMEOUT) as client:
         for attempt in range(_ST_429_MAX_RETRIES + 1):
             response = await client.get(url, headers=headers)
 
@@ -885,7 +889,7 @@ async def poll_once(
             )
             if gap_ids:
                 n2yo_tles: list[dict] = []
-                async with httpx.AsyncClient(follow_redirects=True) as n2yo_client:
+                async with httpx.AsyncClient(follow_redirects=True, timeout=_HTTP_TIMEOUT) as n2yo_client:
                     for nid in gap_ids:
                         result = await fetch_tle_n2yo(nid, api_key, n2yo_client)
                         if result is not None:
